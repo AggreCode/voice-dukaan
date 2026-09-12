@@ -8,7 +8,6 @@ import Record from './pages/Record';
 import Review from './pages/Review';
 import Ledger from './pages/Ledger';
 import Products from './pages/Products';
-import StockIn from './pages/StockIn';
 import Settings from './pages/Settings';
 
 export default function App() {
@@ -36,7 +35,6 @@ export default function App() {
         <Route path="/review/:sessionId" element={<Review />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/products" element={<Products />} />
-        <Route path="/stock-in" element={<StockIn />} />
         <Route path="/settings" element={<Settings onSwitchShop={() => setShopId(null)} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

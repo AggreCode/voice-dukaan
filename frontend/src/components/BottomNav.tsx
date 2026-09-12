@@ -5,7 +5,7 @@ import { usePendingCount } from '../lib/uploadQueue';
 const tabs = [
   { to: '/', label: 'Record', icon: MicIcon, also: [] as string[] },
   { to: '/ledger', label: 'Ledger', icon: LedgerIcon, also: [] as string[] },
-  { to: '/products', label: 'Inventory', icon: BoxIcon, also: ['/stock-in'] },
+  { to: '/products', label: 'Inventory', icon: BoxIcon, also: [] as string[] },
   { to: '/settings', label: 'Settings', icon: GearIcon, also: [] as string[] },
 ];
 

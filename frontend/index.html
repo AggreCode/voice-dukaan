@@ -9,10 +9,21 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Non-blocking: shopkeepers are often on slow or unstable mobile data. If this stylesheet is
+         slow or fails, the app must still load and render immediately with its Latin fallback font,
+         not wait on it. Loaded at low priority, then swapped in once it actually arrives. -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans+Oriya:wght@400;600&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans+Oriya:wght@400;600&display=swap"
+      />
+    </noscript>
     <title>Voice Dukan</title>
   </head>
   <body class="bg-slate-50 text-slate-900">

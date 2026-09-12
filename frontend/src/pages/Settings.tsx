@@ -1,14 +1,28 @@
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '../lib/api';
 import { auth } from '../lib/auth';
+import { CSV_COLUMNS } from '../lib/constants';
 import { cx } from '../lib/utils';
 import { usePendingCount } from '../lib/uploadQueue';
+import { useToast } from '../components/Toast';
 
 export default function Settings({ onSwitchShop }: { onSwitchShop: () => void }) {
   const [debug, setDebug] = useState(auth.isDebug());
   const pending = usePendingCount();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
+  const toast = useToast();
   useEffect(() => auth.setDebug(debug), [debug]);
+
+  const importCsv = useMutation({
+    mutationFn: (f: File) => api.products.importCsv(f),
+    onSuccess: (r) => {
+      toast.success(`Imported: ${r.created} created, ${r.updated} updated`);
+      void qc.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : (e as Error).message),
+  });
 
   const me = useQuery({ queryKey: ['shops', 'me'], queryFn: api.shops.me, retry: 1 });
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 30_000, retry: 1 });
@@ -64,6 +78,33 @@ export default function Settings({ onSwitchShop }: { onSwitchShop: () => void })
           <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} className="h-6 w-6 accent-primary" />
         </label>
         <p className="mt-2 text-xs text-slate-500">Pending uploads: {pending}</p>
+      </section>
+
+      <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bulk import</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Adding many products at once (a wholesaler's price list)? Upload a CSV instead of typing them one by one.
+        </p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) importCsv.mutate(f);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={importCsv.isPending}
+          className="mt-3 min-h-[44px] w-full rounded-lg border border-slate-300 text-sm font-medium text-slate-700 disabled:opacity-60"
+        >
+          {importCsv.isPending ? 'Importing…' : 'Import products from CSV'}
+        </button>
+        <p className="mt-2 text-[11px] text-slate-500">Columns: {CSV_COLUMNS}.</p>
       </section>
 
       <section className="space-y-2">

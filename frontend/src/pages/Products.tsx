@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
-import { COMMON_UNITS, CSV_COLUMNS, LOCAL_NAME_HELP, LOCAL_NAME_PLACEHOLDER, STOCK_ADJUST_REASONS, movementReasonLabel } from '../lib/constants';
+import { COMMON_UNITS, LOCAL_NAME_HELP, LOCAL_NAME_PLACEHOLDER, STOCK_ADJUST_REASONS, movementReasonLabel } from '../lib/constants';
 import { formatSignedQty, formatStock } from '../lib/stock';
 import { ProductOut, ProductPatch, StockAdjustReason, numOrNull } from '../lib/types';
 import { cx, fmtDateTime, fmtMoney } from '../lib/utils';
@@ -26,10 +26,8 @@ export default function Products() {
   const [lowOnly, setLowOnly] = useState(false);
   const [editing, setEditing] = useState<ProductOut | null>(null);
   const [adding, setAdding] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
   const toast = useToast();
-  const nav = useNavigate();
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebounced(q.trim()), 250);
@@ -41,38 +39,18 @@ export default function Products() {
     queryFn: () => api.products.list(debounced || undefined, lowOnly),
   });
 
-  const importCsv = useMutation({
-    mutationFn: (f: File) => api.products.importCsv(f),
-    onSuccess: (r) => {
-      toast.success(`Imported: ${r.created} created, ${r.updated} updated`);
-      void qc.invalidateQueries({ queryKey: ['products'] });
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : (e as Error).message),
-  });
-
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['products'] });
-  const pickCsv = () => fileRef.current?.click();
 
   const noProductsAtAll = !!products.data && products.data.length === 0 && !debounced && !lowOnly;
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-6 pt-4">
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) importCsv.mutate(f);
-          e.target.value = '';
-        }}
-      />
+      {/* Exactly two ways to add stock, always here whether the list is empty or not. */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-primary-dark">Inventory</h1>
         <div className="flex gap-2">
-          <Link to="/stock-in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
-            Stock in
+          <Link to="/?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
+            Add by voice
           </Link>
           <button type="button" onClick={() => setAdding(true)} className="min-h-[44px] rounded-lg bg-primary px-3 text-sm font-semibold text-white">
             + Add product
@@ -112,28 +90,9 @@ export default function Products() {
       {products.isError && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{(products.error as Error).message}</p>}
 
       {noProductsAtAll && !adding && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 text-center">
           <p className="font-semibold text-slate-800">Your inventory is empty</p>
-          <p className="mt-1 text-sm text-slate-500">Choose how to add your products.</p>
-          <div className="mt-3 space-y-2">
-            <button type="button" onClick={() => setAdding(true)} className="flex min-h-[56px] w-full flex-col items-start justify-center rounded-xl border border-slate-200 px-3 py-2 text-left hover:border-primary">
-              <span className="font-semibold text-primary">Add a product</span>
-              <span className="text-xs text-slate-500">Type name, units, prices and opening stock.</span>
-            </button>
-            <button
-              type="button"
-              onClick={pickCsv}
-              disabled={importCsv.isPending}
-              className="flex min-h-[56px] w-full flex-col items-start justify-center rounded-xl border border-slate-200 px-3 py-2 text-left hover:border-primary disabled:opacity-60"
-            >
-              <span className="font-semibold text-primary">{importCsv.isPending ? 'Importing…' : 'Import a CSV'}</span>
-              <span className="text-xs text-slate-500">Columns: {CSV_COLUMNS}. Only name is required.</span>
-            </button>
-            <button type="button" onClick={() => nav('/?mode=stock_in')} className="flex min-h-[56px] w-full flex-col items-start justify-center rounded-xl border border-slate-200 px-3 py-2 text-left hover:border-primary">
-              <span className="font-semibold text-primary">Speak your stock</span>
-              <span className="text-xs text-slate-500">Say what you have, e.g. “Paracetamol 10 strips, ORS 5 packets”.</span>
-            </button>
-          </div>
+          <p className="mt-1 text-sm text-slate-500">Add a product, or add by voice, above.</p>
         </section>
       )}
       {products.data && products.data.length === 0 && !noProductsAtAll && (
@@ -171,15 +130,6 @@ export default function Products() {
           );
         })}
       </ul>
-
-      {products.data && products.data.length > 0 && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-          <button type="button" onClick={pickCsv} disabled={importCsv.isPending} className="min-h-[44px] w-full rounded-lg border border-slate-300 text-sm font-medium text-slate-700 disabled:opacity-60">
-            {importCsv.isPending ? 'Importing…' : 'Import products from CSV'}
-          </button>
-          <p className="mt-1 text-[11px] text-slate-500">Columns: {CSV_COLUMNS}.</p>
-        </div>
-      )}
 
       {editing && (
         <EditProductSheet
