@@ -1,0 +1,25 @@
+frontend/index.html
+  s_21cbb9d4c9dcd1::t_92eb914b1d8687 12-14,18-19,21-26
+frontend/src/components/BottomNav.tsx
+  s_21cbb9d4c9dcd1::t_d237d7d7504dbb 8
+frontend/src/pages/Products.tsx
+  s_21cbb9d4c9dcd1::t_ec79f9c87b37fe 1,3,5,48,52-53,93,95
+frontend/src/pages/Settings.tsx
+  s_21cbb9d4c9dcd1::t_febb118c4a8d44 1-3,5,8,13-15,18-26,83-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "90774785933d7340dbd6f7e6d324a1c60093b72f",
+  "prompts": {},
+  "sessions": {
+    "s_21cbb9d4c9dcd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e37ab05-03c4-4280-a572-89a161a4e04a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    }
+  }
+}
