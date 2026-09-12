@@ -164,3 +164,18 @@ async def test_glossary_suggests_by_shop_type_but_never_constrains_input():
         assert r.json()["name"] == "Grandma's Secret Herbal Mix"
         # and it does NOT leak into the glossary or any other shop
         assert "Grandma's Secret Herbal Mix" not in med_all
+
+
+async def test_glossary_matches_singular_and_plural_forms():
+    """A shopkeeper says "battery"; the shelf label on the glossary is "Batteries AA Eveready".
+    Both forms of the word must find it -- this is the exact gap found in production on 2026-09-12."""
+    if not await _db_ready():
+        pytest.skip("postgres not reachable")
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        h = await _client_and_shop(c, kind="kirana")
+        singular = (await c.get("/api/glossary", headers=h, params={"q": "battery"})).json()
+        plural = (await c.get("/api/glossary", headers=h, params={"q": "batteries"})).json()
+        assert singular and singular == plural
+        assert any("batter" in name.casefold() for name in singular)

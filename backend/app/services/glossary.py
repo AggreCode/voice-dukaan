@@ -13,12 +13,41 @@ KIRANA: list[str] = ['Rice Basmati', 'Rice Sona Masuri', 'Rice Swarna', 'Rice Po
 GENERAL: list[str] = ['Aceclofenac 100mg', 'Amoxicillin 500mg', 'Amoxyclav 625', 'Asafoetida Hing', 'Aspirin 350mg', 'Atta Loose', 'Augmentin 625', 'Azee 500', 'Azithral 500', 'Azithromycin 500mg', 'Bay Leaf Tej Patta', 'Besan Gram Flour', 'Black Chana', 'Black Pepper Whole', 'Boost', 'Bournvita', 'Brufen 400', 'Calpol 125 Syrup', 'Calpol 250 Syrup', 'Cardamom Elaichi', 'Chana Dal', 'Chicken Masala Everest', 'Chilli Powder Everest', 'Cifran 500', 'Cinnamon Dalchini', 'Ciprofloxacin 500mg', 'Cloves Laung', 'Coconut Oil Parachute', 'Coffee Bru Instant', 'Coffee Nescafe Classic', 'Combiflam', 'Combiflam Plus', 'Complan', 'Coriander Powder MDH', 'Crocin 500', 'Crocin Advance', 'Cumin Seeds Jeera', 'Diclofenac 50mg', 'Disprin', 'Dolo 500', 'Dolo 650', 'Doxycycline 100mg', 'Ecosprin 150', 'Ecosprin 75', 'Febrex Plus Syrup', 'Fennel Seeds Saunf', 'Fenugreek Seeds Methi', 'Garam Masala MDH', 'Ghee Amul', 'Ghee Patanjali', 'Green Peas Dried', 'Groundnut Oil', 'Horlicks', 'Ibuprofen 400mg', 'Jaggery Gur', 'Kabuli Chana', 'Kasuri Methi', 'Maida', 'Masoor Dal', 'Meftal Forte', 'Meftal Spas', 'Metacin 500', 'Metronidazole 400mg', 'Moong Dal', 'Mustard Oil Dhara', 'Mustard Oil Fortune', 'Mustard Seeds Rai', 'Nimesulide 100mg', 'Nise Gel', 'Nise Tablet', 'Norflox 400', 'Norflox TZ', 'Oflox 200', 'Ofloxacin 200mg', 'Panch Phoron', 'Paracetamol 500mg', 'Paracetamol 650mg', 'Peanuts Groundnut', 'Poha Flattened Rice', 'Puffed Rice Murmura', 'Rajma Red Kidney Beans', 'Refined Soyabean Oil', 'Refined Sunflower Oil Fortune', 'Rice Basmati', 'Rice Idli', 'Rice Ponni', 'Rice Sona Masuri', 'Rice Swarna', 'Rock Salt Sendha Namak', 'Sabudana', 'Salt Aashirvaad', 'Salt Tata', 'Sambar Masala MTR', 'Saridon', 'Semolina Rava', 'Soya Chunks', 'Sugar', 'Sumo Cold', 'Sumo Tablet', 'Tea Red Label', 'Tea Society', 'Tea Tata Gold', 'Tea Wagh Bakri', 'Til Oil Sesame', 'Toor Dal', 'Tramadol 50mg', 'Turmeric Powder Everest', 'Ultracet', 'Urad Dal', 'Vanaspati Dalda', 'Vermicelli Roasted', 'Voveran', 'Voveran Emulgel', 'Voveran SR', 'Wheat Flour Aashirvaad', 'Wheat Flour Fortune Chakki Fresh', 'Wheat Flour Pillsbury', 'Zerodol', 'Zerodol P', 'Zerodol SP']
 
 
+def _singularize(word: str) -> str:
+    """Cheap English plural stripping so "battery"/"batteries" and "box"/"boxes" both match --
+    a shopkeeper typing the word they'd actually say shouldn't need the exact shelf-label plural."""
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith(("xes", "shes", "ches")):
+        return word[:-2]
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 3:
+        return word[:-1]
+    return word
+
+
 def search(shop_type: str, q: str, limit: int = 20) -> list[str]:
-    """Case-insensitive prefix match first, then substring match, capped at `limit`."""
+    """Case-insensitive match on each query word against each glossary word, singular or plural,
+    prefix matches first, then substring, capped at `limit`."""
     pool = {"medical": MEDICAL, "kirana": KIRANA}.get(shop_type, GENERAL)
     if not q:
         return pool[:limit]
-    needle = q.strip().casefold()
-    prefix = [t for t in pool if t.casefold().startswith(needle)]
-    contains = [t for t in pool if needle in t.casefold() and t not in prefix]
+    needles = {q.strip().casefold()}
+    needles.add(_singularize(q.strip().casefold()))
+
+    def word_forms(text: str) -> set[str]:
+        words = text.casefold().split()
+        return {w for word in words for w in (word, _singularize(word))}
+
+    prefix, contains, seen = [], [], set()
+    for t in pool:
+        forms = word_forms(t)
+        tc = t.casefold()
+        if t in seen:
+            continue
+        if any(tc.startswith(n) or any(f.startswith(n) for f in forms) for n in needles):
+            prefix.append(t)
+            seen.add(t)
+        elif any(n in tc or n in forms for n in needles):
+            contains.append(t)
+            seen.add(t)
     return (prefix + contains)[:limit]
