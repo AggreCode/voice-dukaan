@@ -1,0 +1,28 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+# node
+node_modules/
+frontend/dist/
+# env / secrets
+.env
+secrets/
+*.json.key
+# data
+data/
+eval/data/utterances/*.wav
+eval/results/*
+!eval/results/.gitkeep
+# ide
+.idea/
+.vscode/
+.DS_Store
+# tool caches
+.ruff_cache/
+*.egg-info/
+backend/app/tests/_data/

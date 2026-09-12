@@ -1,0 +1,31 @@
+# Render blueprint: one free web service (API + built web app) using a free Neon Postgres.
+# Render's own free Postgres expires 30 days after creation, so the database lives on Neon instead.
+services:
+  - type: web
+    name: voice-dukan
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./infra/app.Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL      # Neon: postgresql+asyncpg://USER:PASS@HOST/DB?ssl=require
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: EXTRACTOR_MODE
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: VAD_BACKEND
+        value: webrtc
+      - key: SARVAM_TRANSLATE_VIEW
+        value: "false"
+      - key: DATA_DIR
+        value: /data
+      - key: LOG_LEVEL
+        value: INFO

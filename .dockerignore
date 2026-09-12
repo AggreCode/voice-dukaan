@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+.git
+data
+secrets
+eval/data/utterances
+eval/results
+frontend/dev-dist
+.env
