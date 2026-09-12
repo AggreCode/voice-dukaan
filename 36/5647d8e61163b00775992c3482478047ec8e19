@@ -1,0 +1,105 @@
+frontend/src/lib/types.ts
+  s_21cbb9d4c9dcd1::t_1cbc5f400a52a0 28-29,32,42-46,48-50,55-57,68,92,167-175,178,180,183
+frontend/src/lib/constants.ts
+  s_21cbb9d4c9dcd1::t_46b287ff2c458d 17-22
+  s_21cbb9d4c9dcd1::t_569a26a968fc7c 48
+frontend/src/components/ItemRow.tsx
+  s_21cbb9d4c9dcd1::t_a4a95faa4cde7d 99-107,109
+  s_21cbb9d4c9dcd1::t_e2f3a1379740f1 24-25
+  s_21cbb9d4c9dcd1::t_edd7f7f1ee4920 58
+  s_21cbb9d4c9dcd1::t_b2ac10c039e03c 2
+frontend/src/lib/reviewModel.ts
+  s_21cbb9d4c9dcd1::t_6afd5f90eeb331 1,10,30,42,49-50,52,71,73
+frontend/src/components/ProductPicker.tsx
+  s_21cbb9d4c9dcd1::t_242919c3b1780e 112
+  s_21cbb9d4c9dcd1::t_58a8779a76253c 152
+  s_21cbb9d4c9dcd1::t_38154c57a662ea 6
+frontend/src/lib/api.ts
+  s_21cbb9d4c9dcd1::t_7f385649607ffa 129-134
+  s_21cbb9d4c9dcd1::t_b608b3a8157c46 3
+  s_21cbb9d4c9dcd1::t_1e181009ebc403 107,109,115
+frontend/src/pages/Products.tsx
+  s_21cbb9d4c9dcd1::t_b4d9a04b539274 158,162
+  s_21cbb9d4c9dcd1::t_117042d9a2b3ca 421,423
+  s_21cbb9d4c9dcd1::t_4559233e3cb997 274
+  s_21cbb9d4c9dcd1::t_f95fb5b7830eff 380,382
+  s_21cbb9d4c9dcd1::t_3ccacd0f32e49e 306,308-310
+  s_21cbb9d4c9dcd1::t_f6ae88bc40d732 204,217,223,242,247,263,265,276
+  s_21cbb9d4c9dcd1::t_7ac0b816a56c7c 479-489,492,495-496
+  s_21cbb9d4c9dcd1::t_8ae4ab8d15e5d9 5-8,10
+  s_21cbb9d4c9dcd1::t_ffe6214c37739f 343,352
+frontend/src/lib/stock.ts
+  s_21cbb9d4c9dcd1::t_22b1a6cba3b785 5,7,13-14,17,20-21,23
+frontend/src/components/AddProductInline.tsx
+  s_21cbb9d4c9dcd1::t_433ca3bbd7ac84 1-2,4-5,7-8,16-23,26-32,34,38,40,43-62,79-80,86,88-89,91-94,97-100,104-105,108-110,112-176,178-188,190-192,195-196,199-216,226
+frontend/src/pages/StockIn.tsx
+  s_21cbb9d4c9dcd1::t_fccca3e910e6ac 179-188,190
+  s_21cbb9d4c9dcd1::t_2c597416cc36f2 7,9
+  s_21cbb9d4c9dcd1::t_ae6fdbef75359d 144
+  s_21cbb9d4c9dcd1::t_2667acb5a3cade 59,63
+frontend/src/pages/Review.tsx
+  s_21cbb9d4c9dcd1::t_ad6044d0c95f6a 121
+  s_21cbb9d4c9dcd1::t_e6f8243b932c25 141
+backend/alembic/versions/0004_single_unit.py
+  s_21cbb9d4c9dcd1::t_5253eba609c00b 1-41
+backend/app/api/glossary.py
+  s_21cbb9d4c9dcd1::t_c46812bc4d04a9 1-19
+backend/app/api/products.py
+  s_21cbb9d4c9dcd1::t_1e2138af38e573 26,35-36,75,82,95-96,107,111,113-114,122,124,126,175-176,203
+backend/app/api/voice.py
+  s_21cbb9d4c9dcd1::t_412cbf55c8e7d3 54-56
+backend/app/extraction/mock.py
+  s_21cbb9d4c9dcd1::t_180c855ce46731 16,44
+backend/app/extraction/prompt.py
+  s_21cbb9d4c9dcd1::t_08f17dd4071649 19,21-23,45-59,73,75-76,80
+backend/app/main.py
+  s_21cbb9d4c9dcd1::t_1af67dd60ab045 13,47
+backend/app/models/product.py
+  s_21cbb9d4c9dcd1::t_8086274302e102 16-19,30-33
+backend/app/schemas/api.py
+  s_21cbb9d4c9dcd1::t_4536fdc7ceeecc 13-14,22,36,41,49,60,62,68-69,98
+backend/app/schemas/extraction.py
+  s_21cbb9d4c9dcd1::t_abb4d1e3abb01d 1-7,41
+backend/app/services/catalog.py
+  s_21cbb9d4c9dcd1::t_f0626f15ed90bb 30,65,75,142
+backend/app/services/glossary.py
+  s_21cbb9d4c9dcd1::t_867e0eae0cac76 1-24
+backend/app/services/ledger.py
+  s_21cbb9d4c9dcd1::t_9a0c0dfaa97a5e 2-7,89,94,176
+backend/app/tests/test_api_smoke.py
+  s_21cbb9d4c9dcd1::t_fceeba7182bc7d 24,97,100,115,117-118,140,167-169
+backend/app/tests/test_catalog_render.py
+  s_21cbb9d4c9dcd1::t_22fdf47193b3b6 9-10,23
+backend/app/tests/test_gemini_extractor.py
+  s_21cbb9d4c9dcd1::t_d7883d2d460c40 13,19
+backend/app/tests/test_inventory_api.py
+  s_21cbb9d4c9dcd1::t_7755d67fca11c0 1-3,32-51,60-61,68-70,72-73,75,77,93-94,102-105,117-120,131,135-166
+backend/app/tests/test_ledger_math.py
+  s_21cbb9d4c9dcd1::t_f46a6bdb3bc858 1,7-8,11-13,16-17
+backend/app/tests/test_locale_and_mode.py
+  s_21cbb9d4c9dcd1::t_0c0f9950323533 38-40
+backend/app/tests/test_postprocess.py
+  s_21cbb9d4c9dcd1::t_b9acb881ea9e45 5,11,17
+backend/app/tests/test_spoken_terms.py
+  s_21cbb9d4c9dcd1::t_54fc6f6612c4e7 29-30
+backend/scripts/seed_catalog.py
+  s_21cbb9d4c9dcd1::t_6bb6ce606fce68 61
+eval/run_extraction_eval.py
+  s_21cbb9d4c9dcd1::t_74ea27aae6e0d6 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "365647d8e61163b00775992c3482478047ec8e19",
+  "prompts": {},
+  "sessions": {
+    "s_21cbb9d4c9dcd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e37ab05-03c4-4280-a572-89a161a4e04a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    }
+  }
+}
