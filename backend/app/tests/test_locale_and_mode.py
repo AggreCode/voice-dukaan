@@ -12,6 +12,7 @@ from app.services.locale import in_script, pick_local_name
 def test_pick_local_name_by_shop_language():
     aliases = ["paracetamol", "पैरासिटामोल", "ପାରାସିଟାମଲ"]
     assert pick_local_name(aliases, "od-IN") == "ପାରାସିଟାମଲ"
+    assert pick_local_name(aliases, "or-IN") == "ପାରାସିଟାମଲ"  # the code the shop form actually sends
     assert pick_local_name(aliases, "hi-IN") == "पैरासिटामोल"
     assert pick_local_name(aliases, "en-IN") is None
     assert pick_local_name(["crocin 500"], "od-IN") is None

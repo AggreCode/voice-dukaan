@@ -17,3 +17,12 @@ NEON = ("postgresql://vd:pw@ep-cool-1.ap-southeast-1.aws.neon.tech/neondb"
 ])
 def test_database_url_is_normalised(given, expected):
     assert Settings(DATABASE_URL=given).DATABASE_URL == expected
+
+
+def test_pasted_keys_keep_no_surrounding_whitespace():
+    """A trailing newline from a hosting dashboard made every Sarvam call fail with
+    "Illegal header value" on the first Render deploy."""
+    s = Settings(SARVAM_API_KEY="sk_live_abc\n", GEMINI_API_KEY="  AQ.token  ", DATABASE_URL="postgresql://u@h/d\n")
+    assert s.SARVAM_API_KEY == "sk_live_abc"
+    assert s.GEMINI_API_KEY == "AQ.token"
+    assert s.DATABASE_URL == "postgresql+asyncpg://u@h/d"

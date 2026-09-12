@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 SCRIPT_RANGES: dict[str, tuple[int, int]] = {
-    "od": (0x0B00, 0x0B7F),  # Odia
+    "od": (0x0B00, 0x0B7F),  # Odia ("or" is the ISO 639-1 code, "od" is also used in the wild)
+    "or": (0x0B00, 0x0B7F),
     "hi": (0x0900, 0x097F),  # Devanagari
     "mr": (0x0900, 0x097F),
     "ne": (0x0900, 0x097F),

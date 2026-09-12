@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     REVIEW_CONFIDENCE_FLOOR: float = 0.75
     LOW_LANGUAGE_PROBABILITY: float = 0.4
 
+    @field_validator("SARVAM_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_PROJECT_ID",
+                     "SARVAM_MODEL", "GEMINI_MODEL", "CLAUDE_MODEL", "DATABASE_URL", mode="before")
+    @classmethod
+    def _strip_pasted_value(cls, v):
+        """Hosting dashboards keep the newline when a value is pasted, and an API key with a trailing
+        newline is rejected as an illegal HTTP header. Seen on Render, 12 Sep 2026."""
+        return v.strip() if isinstance(v, str) else v
+
     @field_validator("DATABASE_URL")
     @classmethod
     def _normalise_db_url(cls, v: str) -> str:
