@@ -1,0 +1,233 @@
+.dockerignore
+  s_21cbb9d4c9dcd1::t_38ff13b75dacfd 1-12
+.env.example
+  s_21cbb9d4c9dcd1::t_f00f0851a42592 1-38
+.gitignore
+  s_21cbb9d4c9dcd1::t_0c54590ac985de 1-28
+DEPLOY.md
+  s_21cbb9d4c9dcd1::t_63ce6d37771f28 1-58
+README.md
+  s_21cbb9d4c9dcd1::t_3a9717caffe17d 1-113
+backend/alembic.ini
+  s_21cbb9d4c9dcd1::t_bd469aa2265238 1-31
+backend/alembic/env.py
+  s_21cbb9d4c9dcd1::t_610961ccbf4397 1-45
+backend/alembic/script.py.mako
+  s_21cbb9d4c9dcd1::t_945bdb3380b769 1-22
+backend/alembic/versions/0001_initial.py
+  s_21cbb9d4c9dcd1::t_2d14e95e0019d1 1-170
+backend/alembic/versions/0002_inventory_local_names.py
+  s_21cbb9d4c9dcd1::t_6a45e061682402 1-53
+backend/app/api/deps.py
+  s_21cbb9d4c9dcd1::t_7ee5a7a4934e5c 1-71
+backend/app/api/products.py
+  s_21cbb9d4c9dcd1::t_4f0f4a3f32ebc9 1-243
+backend/app/api/shops.py
+  s_21cbb9d4c9dcd1::t_6c6cc656f17ae0 1-68
+backend/app/api/transactions.py
+  s_21cbb9d4c9dcd1::t_cba06b74bc819e 1-70
+backend/app/api/voice.py
+  s_21cbb9d4c9dcd1::t_4bfde0fe2fa405 1-146
+backend/app/audio/normalize.py
+  s_21cbb9d4c9dcd1::t_b07701a7a7f76d 1-43
+backend/app/audio/vad.py
+  s_21cbb9d4c9dcd1::t_d3a8132ac3686c 1-226
+backend/app/config.py
+  s_21cbb9d4c9dcd1::t_0a1a50b3742a36 1-98
+backend/app/db.py
+  s_21cbb9d4c9dcd1::t_4d45859dc61ab6 1-35
+backend/app/extraction/base.py
+  s_21cbb9d4c9dcd1::t_bb7732d8ce9c6e 1-39
+backend/app/extraction/claude.py
+  s_21cbb9d4c9dcd1::t_0da02c889842d3 1-76
+backend/app/extraction/gemini.py
+  s_21cbb9d4c9dcd1::t_fdc0cb420487b9 1-135
+backend/app/extraction/mock.py
+  s_21cbb9d4c9dcd1::t_e3b60e10679a6e 1-66
+backend/app/extraction/postprocess.py
+  s_21cbb9d4c9dcd1::t_d2895c138f0a8e 1-120
+backend/app/extraction/prompt.py
+  s_21cbb9d4c9dcd1::t_e667528f85c598 1-113
+backend/app/main.py
+  s_21cbb9d4c9dcd1::t_00d70e85cb5ef0 1-96
+backend/app/models/__init__.py
+  s_21cbb9d4c9dcd1::t_ef6a2921e28efd 1-7
+backend/app/models/base.py
+  s_21cbb9d4c9dcd1::t_256571dd6b5772 1-19
+backend/app/models/correction.py
+  s_21cbb9d4c9dcd1::t_57f6855e019257 1-30
+backend/app/models/ledger.py
+  s_21cbb9d4c9dcd1::t_dd464b06de6d33 1-28
+backend/app/models/product.py
+  s_21cbb9d4c9dcd1::t_e7156c2e313f04 1-59
+backend/app/models/shop.py
+  s_21cbb9d4c9dcd1::t_8cbc384d791d73 1-33
+backend/app/models/transaction.py
+  s_21cbb9d4c9dcd1::t_756edc0d003c2b 1-47
+backend/app/models/voice_session.py
+  s_21cbb9d4c9dcd1::t_2d53d6eb9b6268 1-42
+backend/app/schemas/api.py
+  s_21cbb9d4c9dcd1::t_6f6e6e795e411f 1-189
+backend/app/schemas/extraction.py
+  s_21cbb9d4c9dcd1::t_b3ba2cb0b4efc0 1-68
+backend/app/services/catalog.py
+  s_21cbb9d4c9dcd1::t_7e1a0aeb7fa4e6 1-148
+backend/app/services/ledger.py
+  s_21cbb9d4c9dcd1::t_a7f4faad0ce0a3 1-216
+backend/app/services/locale.py
+  s_21cbb9d4c9dcd1::t_c93cc3b93d0a98 1-39
+backend/app/services/pipeline.py
+  s_21cbb9d4c9dcd1::t_01d0e728b07124 1-219
+backend/app/services/shadow.py
+  s_21cbb9d4c9dcd1::t_faf8a0a3035722 1-30
+backend/app/stt/base.py
+  s_21cbb9d4c9dcd1::t_cc6fe1f5208fad 1-36
+backend/app/stt/google.py
+  s_21cbb9d4c9dcd1::t_4ceaaa2993196c 1-94
+backend/app/stt/registry.py
+  s_21cbb9d4c9dcd1::t_9cfc1b77898c3e 1-26
+backend/app/stt/sarvam.py
+  s_21cbb9d4c9dcd1::t_72e7f1d81044ea 1-118
+backend/app/tests/conftest.py
+  s_21cbb9d4c9dcd1::t_b3c0e0fce064fb 1-42
+backend/app/tests/test_api_smoke.py
+  s_21cbb9d4c9dcd1::t_9bb6d4f62a46f1 1-204
+backend/app/tests/test_catalog_render.py
+  s_21cbb9d4c9dcd1::t_d6925a84672988 1-31
+backend/app/tests/test_gemini_extractor.py
+  s_21cbb9d4c9dcd1::t_0cb143aa82b50c 1-83
+backend/app/tests/test_inventory_api.py
+  s_21cbb9d4c9dcd1::t_167af3d203cdb0 1-110
+backend/app/tests/test_ledger_math.py
+  s_21cbb9d4c9dcd1::t_1476f22dafc8cc 1-32
+backend/app/tests/test_locale_and_mode.py
+  s_21cbb9d4c9dcd1::t_9db54edab36a3d 1-39
+backend/app/tests/test_mock_extractor.py
+  s_21cbb9d4c9dcd1::t_f4d1e1bc643ee5 1-20
+backend/app/tests/test_postprocess.py
+  s_21cbb9d4c9dcd1::t_221f406e64a434 1-99
+backend/app/tests/test_vad_backends.py
+  s_21cbb9d4c9dcd1::t_c61a122dd4a265 1-43
+backend/app/tests/test_vad_chunks.py
+  s_21cbb9d4c9dcd1::t_d86e6db56f3edd 1-26
+backend/pyproject.toml
+  s_21cbb9d4c9dcd1::t_1292d5fbe07586 1-48
+backend/scripts/export_sessions_to_eval.py
+  s_21cbb9d4c9dcd1::t_f47c163d6d6ffc 1-68
+backend/scripts/seed_catalog.py
+  s_21cbb9d4c9dcd1::t_3a959f1777a74a 1-81
+eval/README.md
+  s_21cbb9d4c9dcd1::t_dd7d6b183cf6e3 1-21
+eval/normalize_text.py
+  s_21cbb9d4c9dcd1::t_652753641aa69f 1-37
+eval/run_extraction_eval.py
+  s_21cbb9d4c9dcd1::t_062b7f196bacc1 1-158
+eval/run_stt_eval.py
+  s_21cbb9d4c9dcd1::t_06f4902d59d441 1-180
+frontend/.gitignore
+  s_21cbb9d4c9dcd1::t_3efe17d9ba5bd7 1-7
+frontend/index.html
+  s_21cbb9d4c9dcd1::t_2da08530eae3ed 1-22
+frontend/package-lock.json
+  s_21cbb9d4c9dcd1::t_9c2a624b9c7766 1-6979
+frontend/package.json
+  s_21cbb9d4c9dcd1::t_6e9afe86958af7 1-31
+frontend/postcss.config.js
+  s_21cbb9d4c9dcd1::t_3c1aa89dbbb6bb 1-6
+frontend/public/icon.svg
+  s_21cbb9d4c9dcd1::t_4d4cfd811daefb 1-7
+frontend/src/App.tsx
+  s_21cbb9d4c9dcd1::t_63a56f8c3336ce 1-46
+frontend/src/components/AddProductInline.tsx
+  s_21cbb9d4c9dcd1::t_0d248cf4138d6d 1-186
+frontend/src/components/BottomNav.tsx
+  s_21cbb9d4c9dcd1::t_4c2163abcdac29 1-72
+frontend/src/components/ConfidenceBadge.tsx
+  s_21cbb9d4c9dcd1::t_1e7f316e42cf4a 1-45
+frontend/src/components/ItemRow.tsx
+  s_21cbb9d4c9dcd1::t_3f4bcd69209b77 1-129
+frontend/src/components/ProductPicker.tsx
+  s_21cbb9d4c9dcd1::t_bda5b14955cc83 1-187
+frontend/src/components/Toast.tsx
+  s_21cbb9d4c9dcd1::t_740ec1e5e1f6dd 1-57
+frontend/src/components/TranscriptPanel.tsx
+  s_21cbb9d4c9dcd1::t_dbd4e82d97e7db 1-88
+frontend/src/index.css
+  s_21cbb9d4c9dcd1::t_b2d0af2fdd992a 1-21
+frontend/src/lib/api.ts
+  s_21cbb9d4c9dcd1::t_96d10b43e0d3de 1-154
+frontend/src/lib/auth.ts
+  s_21cbb9d4c9dcd1::t_6191cb41c235f7 1-46
+frontend/src/lib/constants.ts
+  s_21cbb9d4c9dcd1::t_77071a98f9236a 1-42
+frontend/src/lib/recorder.ts
+  s_21cbb9d4c9dcd1::t_fe7a90bf0b60f7 1-185
+frontend/src/lib/reviewModel.ts
+  s_21cbb9d4c9dcd1::t_1422ac88628042 1-107
+frontend/src/lib/stock.ts
+  s_21cbb9d4c9dcd1::t_6ad5ac012d6306 1-59
+frontend/src/lib/types.ts
+  s_21cbb9d4c9dcd1::t_53f3a0afd48179 1-285
+frontend/src/lib/uploadQueue.ts
+  s_21cbb9d4c9dcd1::t_043ca77807430a 1-182
+frontend/src/lib/utils.ts
+  s_21cbb9d4c9dcd1::t_013fd56f299fe8 1-53
+frontend/src/main.tsx
+  s_21cbb9d4c9dcd1::t_94eae3276cb386 1-30
+frontend/src/pages/Ledger.tsx
+  s_21cbb9d4c9dcd1::t_5e2e73ecf94bc2 1-162
+frontend/src/pages/Onboarding.tsx
+  s_21cbb9d4c9dcd1::t_01ba884ce30d84 1-191
+frontend/src/pages/Products.tsx
+  s_21cbb9d4c9dcd1::t_1ee66403a86a36 1-541
+frontend/src/pages/Record.tsx
+  s_21cbb9d4c9dcd1::t_6b565761bc5bfe 1-292
+frontend/src/pages/Review.tsx
+  s_21cbb9d4c9dcd1::t_816de9c6d2a57c 1-369
+frontend/src/pages/Settings.tsx
+  s_21cbb9d4c9dcd1::t_97dadd772d6cda 1-102
+frontend/src/pages/StockIn.tsx
+  s_21cbb9d4c9dcd1::t_717ff3a19cd20a 1-296
+frontend/src/vite-env.d.ts
+  s_21cbb9d4c9dcd1::t_e51db445e8a969 1-4
+frontend/tailwind.config.js
+  s_21cbb9d4c9dcd1::t_fcca0c8d2ffd2b 1-32
+frontend/tsconfig.json
+  s_21cbb9d4c9dcd1::t_bfbbd0df839f02 1-21
+frontend/tsconfig.node.json
+  s_21cbb9d4c9dcd1::t_5c6ab1da8345a8 1-12
+frontend/vite.config.ts
+  s_21cbb9d4c9dcd1::t_0597d3507de3f1 1-48
+infra/Caddyfile
+  s_21cbb9d4c9dcd1::t_7ef956a6fbd29b 1-11
+infra/app.Dockerfile
+  s_21cbb9d4c9dcd1::t_b3330233c7c0e6 1-24
+infra/backend.Dockerfile
+  s_21cbb9d4c9dcd1::t_55bb292ccc172c 1-13
+infra/docker-compose.yml
+  s_21cbb9d4c9dcd1::t_a45560ae08b235 1-69
+infra/frontend.Dockerfile
+  s_21cbb9d4c9dcd1::t_f3722547bbb0ca 1-15
+infra/hf-space-README.md
+  s_21cbb9d4c9dcd1::t_9a4b0ab6833d60 1-11
+infra/nginx.conf
+  s_21cbb9d4c9dcd1::t_855b56d3f6f84c 1-8
+render.yaml
+  s_21cbb9d4c9dcd1::t_128fe0ea115702 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "39e1d2c54447bc40430462f555b55fe2e822b7e8",
+  "prompts": {},
+  "sessions": {
+    "s_21cbb9d4c9dcd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e37ab05-03c4-4280-a572-89a161a4e04a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    }
+  }
+}
