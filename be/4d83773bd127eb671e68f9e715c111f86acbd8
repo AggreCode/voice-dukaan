@@ -1,0 +1,21 @@
+backend/app/services/glossary.py
+  s_21cbb9d4c9dcd1::t_ff5dd73593d3b7 16-27,29-30,34-52
+backend/app/tests/test_inventory_api.py
+  s_21cbb9d4c9dcd1::t_7ecc626ab1543c 167-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "be4d83773bd127eb671e68f9e715c111f86acbd8",
+  "prompts": {},
+  "sessions": {
+    "s_21cbb9d4c9dcd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e37ab05-03c4-4280-a572-89a161a4e04a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    }
+  }
+}
