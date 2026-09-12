@@ -1,0 +1,59 @@
+.env.example
+  s_21cbb9d4c9dcd1::t_2a73e2ef34a078 12-14,42
+DEPLOY.md
+  s_21cbb9d4c9dcd1::t_384c8df48525f9 10-12
+README.md
+  s_21cbb9d4c9dcd1::t_1e4174c9cf46d8 92-99
+ROADMAP.md
+  s_21cbb9d4c9dcd1::t_e34a8a113c8c03 1-94
+backend/alembic/versions/0003_clean_learned_aliases.py
+  s_21cbb9d4c9dcd1::t_c500ea0c3c7f20 1-33
+backend/app/config.py
+  s_21cbb9d4c9dcd1::t_596caccd6803d5 23-26,70-92,100-106
+backend/app/extraction/postprocess.py
+  s_21cbb9d4c9dcd1::t_8604deed3e7eea 10,19
+backend/app/extraction/prompt.py
+  s_21cbb9d4c9dcd1::t_bb01c635bb12b4 70-74
+backend/app/services/catalog.py
+  s_21cbb9d4c9dcd1::t_5682d90d6eaea0 16,88-90,92-103,105-124
+backend/app/services/ledger.py
+  s_21cbb9d4c9dcd1::t_f8ad87da1983a1 24,187-199,201,206
+backend/app/services/pipeline.py
+  s_21cbb9d4c9dcd1::t_933debd88f5af6 100
+backend/app/services/spoken.py
+  s_21cbb9d4c9dcd1::t_42b62910a812e7 1-85
+backend/app/tests/test_api_smoke.py
+  s_21cbb9d4c9dcd1::t_f23caf439caa68 56-57,86,169-171,174
+backend/app/tests/test_config_db_url.py
+  s_21cbb9d4c9dcd1::t_648e9246088224 1-19
+backend/app/tests/test_postprocess.py
+  s_21cbb9d4c9dcd1::t_721b3074074f97 47-53
+backend/app/tests/test_spoken_terms.py
+  s_21cbb9d4c9dcd1::t_719ac283d97cb2 1-44
+infra/app.Dockerfile
+  s_fb8df7205fbdd3::t_7bb3401552b5da 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b151ca2125fc4702c1cfb52592772767218eea1a",
+  "prompts": {},
+  "sessions": {
+    "s_21cbb9d4c9dcd1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e37ab05-03c4-4280-a572-89a161a4e04a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    },
+    "s_fb8df7205fbdd3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b71cdc2a-a60d-488b-9fbb-9a99f6dd4b3c",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    }
+  }
+}
