@@ -7,10 +7,9 @@ so there is a single URL and no CORS setup.
 
 1. Sign up at <https://neon.com>.
 2. Create a project in region **AWS ap-southeast-1 (Singapore)**, the closest free region to India.
-3. Copy the connection string. It looks like
-   `postgresql://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`
-4. Rewrite it for this app: scheme `postgresql+asyncpg://` and `ssl=require` instead of `sslmode=require`:
-   `postgresql+asyncpg://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?ssl=require`
+3. Copy the connection string and paste it as `DATABASE_URL` exactly as Neon gives it, for example
+   `postgresql://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require`.
+   The app rewrites the driver and SSL parameters itself, so no editing is needed.
 
 Free plan: 0.5 GB storage, scales to zero when idle, no card, no expiry date.
 

@@ -1,4 +1,6 @@
-# One image = API + built web app. Used for free hosting (Hugging Face Spaces, Render, Koyeb, Cloud Run).
+# One image = API + built web app in a single container. Deploy target: Render's free web service
+# (or any Docker host - Koyeb, Fly.io, Railway - that reads $PORT). Hugging Face Spaces is NOT used:
+# its free tier only covers static sites; a Docker Space with compute needs a paid PRO plan.
 FROM node:20-alpine AS web
 WORKDIR /web
 COPY frontend/package*.json ./

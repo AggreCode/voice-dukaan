@@ -44,6 +44,13 @@ def test_number_evidence_indic_words_with_vowel_signs_and_counters():
     assert not has_number_evidence("ପାରାସିଟାମଲ୍ସ ଗୋଟା")
 
 
+def test_colloquial_odia_numbers_from_real_recordings():
+    # exact spans from the first real phone recording, 11 Sep 2026
+    assert has_number_evidence("ଦି ପ୍ୟାକେଟ୍ ଆଭିଲ୍")
+    assert has_number_evidence("ଚାରି ଷ୍ଟ୍ରିପ୍ ପାରାସିଟାମଲ୍")
+    assert has_number_evidence("ପାଞ୍ଚ ଷ୍ଟ୍ରିପ୍ କ୍ରସିନ୍")
+
+
 def test_silent_default_quantity_one_is_flagged():
     out = apply_guards(_bill(_item(spoken_span="ପାରାସିଟାମଲ୍ସ ଗୋଟା", quantity=1, confidence=0.95)),
                        transcript="ପାରାସିଟାମଲ୍ସ ଗୋଟା ଆଉ ଡୋଲୋ ଦୁଇଟା ପତା", catalog=_snap())

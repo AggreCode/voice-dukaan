@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     SARVAM_TRANSLATE_VIEW: bool = False  # extra call doubles STT cost; enable only if the eval shows it helps
     SARVAM_LANGUAGE: str = "unknown"
     SARVAM_MAX_CONCURRENCY: int = 4
+    # Boosting product names biased Sarvam badly: "battery" came back as "biscuit" because three
+    # biscuit products were in the list. Measured 12 Sep 2026 by replaying the same audio.
+    # off = send none (default) | aliases = send spoken aliases | names = old behaviour
+    STT_KEYTERMS: str = "off"
 
     # Anthropic (extraction)
     ANTHROPIC_API_KEY: str = ""
@@ -63,11 +67,41 @@ class Settings(BaseSettings):
     REVIEW_CONFIDENCE_FLOOR: float = 0.75
     LOW_LANGUAGE_PROBABILITY: float = 0.4
 
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _normalise_db_url(cls, v: str) -> str:
+        """Accept a connection string pasted straight from Neon, Supabase or Render.
+
+        Adds the async driver, turns `sslmode` into asyncpg's `ssl`, and drops parameters asyncpg
+        rejects (Neon appends `channel_binding=require`, which would crash on the first connection).
+        """
+        url = v.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        base, sep, query = url.partition("?")
+        if not sep:
+            return url
+        ssl_value = None
+        for part in query.split("&"):
+            key, _, value = part.partition("=")
+            if key in ("ssl", "sslmode") and value:
+                ssl_value = "require" if value in ("require", "verify-ca", "verify-full", "true", "1") else value
+        return f"{base}?ssl={ssl_value}" if ssl_value else base
+
     @field_validator("CLAUDE_EFFORT")
     @classmethod
     def _effort(cls, v: str) -> str:
         if v not in {"low", "medium", "high", "xhigh", "max"}:
             raise ValueError("CLAUDE_EFFORT must be low|medium|high|xhigh|max")
+        return v
+
+    @field_validator("STT_KEYTERMS")
+    @classmethod
+    def _keyterms(cls, v: str) -> str:
+        if v not in {"off", "aliases", "names"}:
+            raise ValueError("STT_KEYTERMS must be off|aliases|names")
         return v
 
     @field_validator("EXTRACTOR_MODE")

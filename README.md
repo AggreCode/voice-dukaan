@@ -89,6 +89,14 @@ Open the printed `https://…` link on the phone. The Vite dev server forwards `
 ### Health check
 `GET /api/health` shows which keys are configured and which extractor and model are active.
 
+## Deploy
+
+`DEPLOY.md` walks through free hosting: one Render web service (API and web app in a single container)
+with a Neon Postgres. Both are free with no credit card. `render.yaml` is the blueprint Render reads.
+
+Voice detection has three backends, chosen automatically: `silero` (best, needs torch, used locally),
+`webrtc` (tiny, used in the production image), and `energy` (fallback). Force one with `VAD_BACKEND`.
+
 ## Repo layout
 ```
 backend/app/audio        ffmpeg normalise, Silero VAD chunking

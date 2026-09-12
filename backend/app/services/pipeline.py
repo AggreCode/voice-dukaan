@@ -97,7 +97,7 @@ async def process_session(
         # 3. STT: primary per chunk (+ translate view) and shadow in parallel
         shop = await session.get(Shop, vs.shop_id)
         snap = await catalog_svc.load_snapshot(session, vs.shop_id)
-        hints = snap.hints
+        hints = snap.hints if s.STT_KEYTERMS != "off" else []
         sem = asyncio.Semaphore(s.SARVAM_MAX_CONCURRENCY)
 
         async def _primary(c: vad.Chunk) -> STTResult:

@@ -53,7 +53,8 @@ class FakeSarvam:
 
     async def transcribe(self, wav_path, *, hints, language="unknown"):
         self.calls += 1
-        assert wav_path.exists() and hints, "hints must come from the catalog"
+        assert wav_path.exists()
+        assert hints and all(not h[0].isdigit() for h in hints), hints  # names may contain "500"
         return STTResult("sarvam:fake", "fake", self.transcript, language_code="od-IN", language_probability=0.93,
                          raw={"request_id": "r1"})
 
@@ -82,6 +83,7 @@ async def test_full_flow(tmp_path, monkeypatch):
     s = get_settings()
     s.SARVAM_API_KEY = "test"
     s.SARVAM_TRANSLATE_VIEW = True
+    s.STT_KEYTERMS = "aliases"  # exercise the hint path; the shipped default is "off"
     s.GOOGLE_SHADOW_ENABLED = False
 
     from app.api import voice as voice_api
@@ -164,10 +166,12 @@ async def test_full_flow(tmp_path, monkeypatch):
         prods = {p["code"]: p for p in (await c.get("/api/products", headers=h)).json()}
         assert float(prods["p001"]["stock_qty"]) == 100 - 10 - 2 * 10  # 10 pieces + 2 strips of 10
         assert float(prods["p002"]["stock_qty"]) == 100
-        assert "crocin dui patta" in prods["p001"]["aliases"]  # learned alias
+        # "crocin dui patta" cleans to "crocin", which is the leading word of the other product's
+        # name, so it is deliberately NOT learned - that would hide Crocin 500 from every later bill.
+        assert "crocin" not in prods["p001"]["aliases"] and "crocin dui patta" not in prods["p001"]["aliases"]
 
         me = (await c.get("/api/shops/me", headers=h)).json()
-        assert me["catalog_version"] >= 4  # bumped by 2 product creates + alias learning
+        assert me["catalog_version"] >= 3  # bumped by the two product creates
 
         # ledger + void restores stock
         r = await c.post(f"/api/transactions/{txn['id']}/void", headers=h)

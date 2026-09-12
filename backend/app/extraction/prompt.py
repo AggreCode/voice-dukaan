@@ -67,7 +67,11 @@ and piece if larger, and lower confidence to at most 0.7; for other goods use th
 10. `alternatives` lists other catalog ids that could plausibly be what was said, best first, never the
     chosen product_id itself, at most 3.
 11. `transcript_language`: "od", "hi", "en", or "mixed".
-12. `customer_name` only if a person's name is clearly spoken as the customer ("Ramesh babu nka pain").
+12. If the transcript uses a general category word that several catalog products share ("biscuit",
+    "soap", "oil", "shampoo", "battery"), do not answer confidently. Pick the most likely product,
+    set `needs_review` true with reason "ambiguous_category", and put the other candidates in
+    `alternatives` so the shopkeeper can pick in one tap.
+13. `customer_name` only if a person's name is clearly spoken as the customer ("Ramesh babu nka pain").
     `payment_mode`: cash | upi | credit ("udhar", "baki", "khata") | unknown; null if not mentioned.
 
 ## Confidence calibration

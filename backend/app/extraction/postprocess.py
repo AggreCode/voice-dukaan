@@ -7,32 +7,7 @@ import unicodedata
 
 from app.schemas.extraction import Alternative, BillExtraction, ExtractedItem
 from app.services.catalog import CatalogSnapshot
-
-NUMBER_WORDS = {
-    # latin transliterations (odia / hindi / english)
-    "eka", "ek", "gote", "gotie", "one", "dui", "do", "two", "tini", "teen", "tin", "three", "chari", "char", "four",
-    "pancha", "panch", "paanch", "five", "chha", "chhe", "chhaa", "six", "sata", "saat", "seven", "atha", "aath",
-    "eight", "na", "nau", "nao", "nine", "dasa", "das", "dus", "ten", "egara", "gyarah", "bara", "barah", "tera",
-    "terah", "chauda", "chaudah", "pandara", "pandrah", "shola", "solah", "satara", "satrah", "athara", "atharah",
-    "unish", "unnis", "kodie", "koie", "bees", "bis", "pachisa", "pachees", "pachis", "tirisa", "tees", "tis",
-    "chalisa", "chalis", "pachasa", "pachas", "sathie", "sattar", "satari", "ashi", "assi", "nabe", "nabbe", "sahe",
-    "sau", "so", "hundred", "adha", "aadha", "adhaa", "half", "derh", "dedh", "adhai", "dhai", "paun", "pao", "pav",
-    "pawa", "sadhe", "darjan", "dozen", "hazar", "hajar", "thousand",
-    # odia script
-    "ଏକ", "ଗୋଟେ", "ଗୋଟିଏ", "ଦୁଇ", "ତିନି", "ଚାରି", "ପାଞ୍ଚ", "ଛଅ", "ସାତ", "ଆଠ", "ନଅ", "ଦଶ", "ଏଗାର", "ବାର", "ତେର",
-    "ଚଉଦ", "ପନ୍ଦର", "ଷୋହଳ", "ସତର", "ଅଠର", "ଉଣେଇଶ", "କୋଡ଼ିଏ", "କୋଡିଏ", "ପଚିଶ", "ତିରିଶ", "ଚାଳିଶ", "ପଚାଶ", "ଷାଠିଏ",
-    "ସତୁରି", "ଅଶୀ", "ନବେ", "ଶହେ", "ଅଧା", "ଦେଢ଼", "ଦେଢ", "ଅଢ଼େଇ", "ଅଢେଇ", "ପାଉଣ", "ସାଢ଼େ", "ଡଜନ", "ହଜାର",
-    # devanagari
-    "एक", "दो", "तीन", "चार", "पाँच", "पांच", "छह", "छः", "सात", "आठ", "नौ", "दस", "ग्यारह", "बारह", "तेरह",
-    "चौदह", "पंद्रह", "सोलह", "सत्रह", "अठारह", "उन्नीस", "बीस", "पच्चीस", "तीस", "चालीस", "पचास", "साठ", "सत्तर",
-    "अस्सी", "नब्बे", "सौ", "आधा", "डेढ़", "ढाई", "पाव", "साढ़े", "दर्जन", "हज़ार", "हजार",
-}
-DIGIT_RE = re.compile(r"[0-9०-९୦-୯]")
-# Split on whitespace/punctuation only. A \w-based tokenizer breaks Odia and Devanagari words apart at vowel
-# signs (combining marks are not \w in Python's re), so "ତିନି" or "दो" would never match a number word.
-SPLIT_RE = re.compile(r"[\s,.;:!?।|/()\-]+")
-# Counter suffixes glued to numbers in speech: Odia ଦୁଇଟା / ଛଅଟା / ଗୋଟିଏ-style, Hindi colloquial "दोठो".
-CLASSIFIER_SUFFIXES = ("ଟିଏ", "ଟା", "ଟି", "ଟେ", "टा", "ठो")
+from app.services.spoken import DIGIT_RE, is_number_word, tokens  # noqa: E402
 
 
 def _norm(s: str) -> str:
@@ -40,20 +15,8 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().casefold()
 
 
-def _tokens(text: str) -> list[str]:
-    return [t for t in SPLIT_RE.split(unicodedata.normalize("NFC", text).casefold()) if t]
-
-
 def has_number_evidence(text: str) -> bool:
-    if DIGIT_RE.search(text):
-        return True
-    for tok in _tokens(text):
-        if tok in NUMBER_WORDS:
-            return True
-        for suffix in CLASSIFIER_SUFFIXES:
-            if tok.endswith(suffix) and tok[: -len(suffix)] in NUMBER_WORDS:
-                return True
-    return False
+    return bool(DIGIT_RE.search(text)) or any(is_number_word(t) for t in tokens(text))
 
 
 def find_span(transcript_norm: str, span: str) -> bool:

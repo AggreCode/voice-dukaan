@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.schemas.api import SaveBillIn
 from app.services import catalog as catalog_svc
+from app.services.spoken import clean_learned_alias
 
 PACK_UNITS = {"strip", "packet", "bottle", "box", "carton", "bundle", "dozen"}
 
@@ -183,13 +184,26 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
 
 
 async def _learn_alias(session: AsyncSession, product: Product, span: str) -> bool:
+    """Remember how this shop says this product. Quantity and unit words are stripped, and a phrase
+    that already belongs to another product is dropped rather than learned."""
+    others = (await session.execute(select(Product).where(
+        Product.shop_id == product.shop_id, Product.id != product.id))).scalars().all()
+    taken: set[str] = set()
+    for other in others:
+        taken.add(other.name.casefold())
+        if other.local_name:
+            taken.add(other.local_name.casefold())
+        taken.update(a.alias.casefold() for a in other.aliases)
+    alias = clean_learned_alias(span, taken)
+    if alias is None:
+        return False
     existing = (await session.execute(select(ProductAlias).where(
-        ProductAlias.product_id == product.id, ProductAlias.alias == span))).scalar_one_or_none()
+        ProductAlias.product_id == product.id, ProductAlias.alias == alias))).scalar_one_or_none()
     if existing:
         existing.hit_count += 1
         existing.last_used_at = datetime.now(timezone.utc)
         return False
-    session.add(ProductAlias(product_id=product.id, alias=span[:200], lang="mixed", source="user_correction",
+    session.add(ProductAlias(product_id=product.id, alias=alias, lang="mixed", source="user_correction",
                              hit_count=1, last_used_at=datetime.now(timezone.utc)))
     return True
 

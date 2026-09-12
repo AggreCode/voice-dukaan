@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Product, ProductAlias, Shop
+from app.services.spoken import is_quantity_token, tokens
 
 MAX_ALIASES_IN_COLUMN = 6
 MAX_LEARNED_LINES = 300
@@ -84,20 +85,43 @@ def render_catalog(shop: Shop, products: list[CatalogProduct]) -> str:
     return "\n".join(lines) + "\n"
 
 
+GENERIC_BRANDS = {"loose", "generic", "local", "-"}
+
+
 def build_hints(products: list[CatalogProduct], limit: int = MAX_HINTS) -> list[str]:
-    """Product names/brands most worth boosting in the ASR: most-sold first, then the rest."""
-    ranked = sorted(products, key=lambda p: (-p.sold_count, p.code))
-    out: list[str] = []
+    """Terms to boost in the speech engine: the word a shopkeeper actually says, one per product.
+
+    Product names ("Biscuit Parle G") and brands are poor boosts because several products share the
+    leading category word, which drags unrelated speech towards it. Spoken aliases ("parle g",
+    "battery") are what people say. Only used when STT_KEYTERMS is enabled.
+    """
+    shared_first_word: dict[str, int] = {}
+    for p in products:
+        head = p.name.split()[0].casefold() if p.name.split() else ""
+        shared_first_word[head] = shared_first_word.get(head, 0) + 1
+
+    terms: list[str] = []
     seen: set[str] = set()
-    for p in ranked:
-        for term in [p.name, p.brand, *p.learned[:1]]:
-            t = (term or "").strip()
-            if t and t != "-" and t.casefold() not in seen and len(t) <= 64:
-                seen.add(t.casefold())
-                out.append(t)
-                if len(out) >= limit:
-                    return out
-    return out
+    for p in sorted(products, key=lambda x: (-x.sold_count, x.code)):
+        # first alias as authored ("battery" before "cell"): that is the word people say most
+        latin = [a for a in p.aliases if a.isascii() and len(a) >= 3 and not any(ch.isdigit() for ch in a)]
+        candidate = latin[0] if latin else p.name
+        if not latin:
+            words = p.name.split()
+            if len(words) > 1 and shared_first_word.get(words[0].casefold(), 0) > 1:
+                candidate = " ".join(words[1:])
+        candidate = candidate.strip()
+        first = tokens(candidate)[:1]
+        if first and is_quantity_token(first[0]):
+            continue  # e.g. a stale learned phrase like "4 packet biscuit"
+        key = candidate.casefold()
+        if not candidate or key in seen or key in GENERIC_BRANDS or len(candidate) > 64:
+            continue
+        seen.add(key)
+        terms.append(candidate)
+        if len(terms) >= limit:
+            break
+    return terms
 
 
 async def load_snapshot(session: AsyncSession, shop_id: uuid.UUID, *, use_cache: bool = True) -> CatalogSnapshot:
