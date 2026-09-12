@@ -1,5 +1,10 @@
-"""Structured-output schema Claude must return. FROZEN: any change to this schema changes the
-injected structured-output grammar and invalidates the prompt cache for every shop."""
+"""Structured-output schema Gemini/Claude must return. FROZEN: any change to this schema changes the
+injected structured-output grammar and invalidates the prompt cache for every shop.
+
+`unit` is free text, not a closed enum: a product has exactly one unit (whatever the shop calls it),
+and the model's job is to report the unit word actually spoken/typed, not to classify it into a
+fixed set. Consistency (kg vs kilo vs kilogram) is handled by prompt guidance, not schema constraints.
+"""
 from __future__ import annotations
 
 from enum import Enum
@@ -12,22 +17,6 @@ class Intent(str, Enum):
     purchase = "purchase"
     stock_query = "stock_query"
     unknown = "unknown"
-
-
-class Unit(str, Enum):
-    piece = "piece"
-    strip = "strip"
-    packet = "packet"
-    bottle = "bottle"
-    box = "box"
-    carton = "carton"
-    kg = "kg"
-    g = "g"
-    litre = "litre"
-    ml = "ml"
-    dozen = "dozen"
-    bundle = "bundle"
-    other = "other"
 
 
 class PaymentMode(str, Enum):
@@ -49,8 +38,7 @@ class ExtractedItem(BaseModel):
     product_id: str | None
     product_name_guess: str
     quantity: float
-    unit: Unit
-    unit_raw: str
+    unit: str  # the unit word as spoken/typed, lightly normalised (see prompt cheat sheet)
     unit_price: float | None
     alternatives: list[Alternative]
     confidence: float

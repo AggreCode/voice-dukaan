@@ -118,7 +118,7 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
     setIntentState(t);
     const kind = priceKindFor(t);
     setItems((prev) =>
-      prev.map((i) => (i.priceTouched ? i : { ...i, unit_price: defaultUnitPrice(i.product, i.unit, kind) ?? i.unit_price })),
+      prev.map((i) => (i.priceTouched ? i : { ...i, unit_price: defaultUnitPrice(i.product, kind) ?? i.unit_price })),
     );
   };
 
@@ -138,7 +138,7 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
     setItems((prev) =>
       prev.map((i) => {
         if (i.key !== key) return i;
-        const price = i.priceTouched ? i.unit_price : defaultUnitPrice(p, i.unit, priceKind) ?? i.unit_price;
+        const price = i.priceTouched ? i.unit_price : defaultUnitPrice(p, priceKind) ?? i.unit_price;
         return { ...i, product: p, unit_price: price };
       }),
     );

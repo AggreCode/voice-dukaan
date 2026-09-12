@@ -14,6 +14,12 @@ export const VOICE_MODES: { value: VoiceMode; label: string }[] = [
   { value: 'stock_in', label: 'Stock in' },
 ];
 
+/** Suggestions only for a free-text unit `<input>` + `<datalist>` — never a constrained `<select>`. */
+export const COMMON_UNITS = [
+  'piece', 'kg', 'g', 'litre', 'ml', 'box', 'carton', 'packet', 'strip', 'bottle',
+  'dozen', 'bag', 'bundle', 'gross', 'roll', 'pair', 'set',
+];
+
 export const STOCK_ADJUST_REASONS: { value: StockAdjustReason; label: string }[] = [
   { value: 'restock', label: 'Restock' },
   { value: 'damage', label: 'Damaged' },
@@ -39,4 +45,4 @@ export function movementReasonLabel(reason: string): string {
   return MOVEMENT_REASON_LABELS[reason] ?? (reason ? reason.charAt(0).toUpperCase() + reason.slice(1) : 'Change');
 }
 
-export const CSV_COLUMNS = 'name, brand, category, pack_unit, sub_unit, pack_size, sell_price, aliases (separated by ;), opening_stock, local_name';
+export const CSV_COLUMNS = 'name, brand, category, unit, sell_price, aliases (separated by ;), opening_stock, local_name';

@@ -23,7 +23,7 @@ from app.schemas.api import (
     StockMovementOut,
 )
 from app.services import catalog as catalog_svc
-from app.services.ledger import apply_stock_movement, to_base_qty
+from app.services.ledger import apply_stock_movement
 from app.services.locale import pick_local_name
 
 router = APIRouter(prefix="/api/products", tags=["products"])
@@ -32,9 +32,8 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 def _out(p: Product) -> ProductOut:
     return ProductOut(
         id=p.id, code=p.code, name=p.name, local_name=p.local_name, brand=p.brand, category=p.category,
-        pack_unit=p.pack_unit, sub_unit=p.sub_unit, pack_size=p.pack_size, sell_price=p.sell_price,
-        cost_price=p.cost_price, stock_qty=p.stock_qty, low_stock_threshold=p.low_stock_threshold,
-        is_active=p.is_active, aliases=[a.alias for a in p.aliases],
+        unit=p.unit, sell_price=p.sell_price, cost_price=p.cost_price, stock_qty=p.stock_qty,
+        low_stock_threshold=p.low_stock_threshold, is_active=p.is_active, aliases=[a.alias for a in p.aliases],
     )
 
 
@@ -49,18 +48,6 @@ async def _load(session: AsyncSession, shop: Shop, product_id: uuid.UUID) -> Pro
 async def _bump(shop: Shop) -> None:
     shop.catalog_version += 1
     catalog_svc.invalidate(shop.id)
-
-
-def _units_for(p: Product) -> set[str]:
-    return {p.pack_unit, p.sub_unit, "dozen", "kg", "g", "litre", "ml"}
-
-
-def _to_base(p: Product, qty: Decimal, unit: str | None) -> Decimal:
-    if unit is None or unit == p.sub_unit:
-        return qty
-    if unit not in _units_for(p):
-        raise HTTPException(400, f"unit must be {p.pack_unit} or {p.sub_unit} for {p.name}")
-    return to_base_qty(qty, unit, p)
 
 
 @router.get("", response_model=list[ProductOut])
@@ -85,15 +72,14 @@ async def create_product(body: ProductIn, shop: Shop = Depends(current_shop),
     local = (body.local_name or "").strip() or pick_local_name(aliases, shop.default_language)
     code = await catalog_svc.next_product_code(session, shop.id)
     p = Product(shop_id=shop.id, code=code, name=body.name.strip(), local_name=local, brand=body.brand.strip(),
-                category=body.category, pack_unit=body.pack_unit, sub_unit=body.sub_unit, pack_size=body.pack_size,
+                category=body.category, unit=(body.unit or "piece").strip(),
                 sell_price=body.sell_price, cost_price=body.cost_price, low_stock_threshold=body.low_stock_threshold)
     session.add(p)
     await session.flush()
     for a in aliases:
         session.add(ProductAlias(product_id=p.id, alias=a, source="seed"))
     if body.opening_stock:
-        base = _to_base(p, body.opening_stock, body.opening_stock_unit)
-        await apply_stock_movement(session, p, base, reason="opening", ref_type="manual", ref_id=None)
+        await apply_stock_movement(session, p, body.opening_stock, reason="opening", ref_type="manual", ref_id=None)
     await _bump(shop)
     await session.commit()
     return _out(await _load(session, shop, p.id))
@@ -106,6 +92,8 @@ async def patch_product(product_id: uuid.UUID, body: ProductPatch, shop: Shop = 
     data = body.model_dump(exclude_none=True)
     if "local_name" in data:
         data["local_name"] = data["local_name"].strip() or None
+    if "unit" in data:
+        data["unit"] = data["unit"].strip() or p.unit
     for k, v in data.items():
         setattr(p, k, v)
     await _bump(shop)
@@ -116,18 +104,14 @@ async def patch_product(product_id: uuid.UUID, body: ProductPatch, shop: Shop = 
 @router.post("/{product_id}/stock", response_model=ProductOut)
 async def adjust_stock(product_id: uuid.UUID, body: StockAdjustIn, shop: Shop = Depends(current_shop),
                        session: AsyncSession = Depends(get_session)):
+    """Signed quantity in the product's own unit -- positive adds, negative removes. No conversion."""
     p = await _load(session, shop, product_id)
     if body.reason not in STOCK_REASONS:
         raise HTTPException(400, f"reason must be one of {sorted(STOCK_REASONS)}")
-    if body.qty is not None:
-        delta = _to_base(p, body.qty, body.unit)
-    elif body.delta_qty is not None:
-        delta = body.delta_qty
-    else:
-        raise HTTPException(400, "send qty with unit, or delta_qty")
-    if delta == 0:
+    if body.delta_qty == 0:
         raise HTTPException(400, "quantity must not be zero")
-    await apply_stock_movement(session, p, delta, reason=body.reason, ref_type="manual", ref_id=None, note=body.note)
+    await apply_stock_movement(session, p, body.delta_qty, reason=body.reason, ref_type="manual", ref_id=None,
+                               note=body.note)
     await session.commit()
     return _out(await _load(session, shop, product_id))
 
@@ -135,12 +119,11 @@ async def adjust_stock(product_id: uuid.UUID, body: StockAdjustIn, shop: Shop = 
 @router.post("/{product_id}/stock/count", response_model=ProductOut)
 async def count_stock(product_id: uuid.UUID, body: StockCountIn, shop: Shop = Depends(current_shop),
                       session: AsyncSession = Depends(get_session)):
-    """Physical count: set stock to what the shopkeeper counted and record the difference."""
+    """Physical count in the product's own unit: stock is set to this amount, the difference recorded."""
     p = await _load(session, shop, product_id)
-    counted = _to_base(p, body.counted_qty, body.unit)
-    delta = counted - (p.stock_qty or Decimal("0"))
+    delta = body.counted_qty - (p.stock_qty or Decimal("0"))
     await apply_stock_movement(session, p, delta, reason="count", ref_type="manual", ref_id=None,
-                               note=body.note or f"counted {body.counted_qty} {body.unit or p.sub_unit}")
+                               note=body.note or f"counted {body.counted_qty} {p.unit}")
     await session.commit()
     return _out(await _load(session, shop, product_id))
 
@@ -189,8 +172,8 @@ async def delete_alias(product_id: uuid.UUID, alias: str, shop: Shop = Depends(c
 @router.post("/import", response_model=dict)
 async def import_csv(file: UploadFile = File(...), shop: Shop = Depends(current_shop),
                      session: AsyncSession = Depends(get_session)):
-    """CSV columns: name, brand, category, pack_unit, sub_unit, pack_size, sell_price, cost_price,
-    aliases (; separated), opening_stock (base units), local_name. Only name is required."""
+    """CSV columns: name, brand, category, unit, sell_price, cost_price, aliases (; separated),
+    opening_stock (in `unit`), local_name. Only name is required."""
     text = (await file.read()).decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     existing = {(p.name.casefold(), p.brand.casefold()): p for p in (await session.execute(
@@ -217,9 +200,7 @@ async def import_csv(file: UploadFile = File(...), shop: Shop = Depends(current_
                 alias_sets[key] = set()
                 created += 1
             p.category = (row.get("category") or p.category or "general").strip()
-            p.pack_unit = (row.get("pack_unit") or p.pack_unit or "piece").strip()
-            p.sub_unit = (row.get("sub_unit") or p.sub_unit or "piece").strip()
-            p.pack_size = Decimal(row.get("pack_size") or p.pack_size or "1")
+            p.unit = (row.get("unit") or p.unit or "piece").strip()
             p.sell_price = Decimal(row.get("sell_price") or p.sell_price or "0")
             if row.get("cost_price"):
                 p.cost_price = Decimal(row["cost_price"])

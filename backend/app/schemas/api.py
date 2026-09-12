@@ -10,6 +10,8 @@ from app.schemas.extraction import BillExtraction
 
 
 # ---------- products ----------
+# A product has exactly one unit, chosen by the shop as free text ("kg", "carton", "strip", anything).
+# We never convert between units or infer a "pack size" -- the shop's own unit is authoritative.
 class ProductOut(BaseModel):
     id: uuid.UUID
     code: str
@@ -17,9 +19,7 @@ class ProductOut(BaseModel):
     local_name: str | None = None
     brand: str
     category: str
-    pack_unit: str
-    sub_unit: str
-    pack_size: Decimal
+    unit: str
     sell_price: Decimal
     cost_price: Decimal | None = None
     stock_qty: Decimal
@@ -33,15 +33,12 @@ class ProductIn(BaseModel):
     local_name: str | None = None  # derived from aliases in the shop's script when omitted
     brand: str = ""
     category: str = "general"
-    pack_unit: str = "piece"
-    sub_unit: str = "piece"
-    pack_size: Decimal = Decimal("1")
+    unit: str = "piece"
     sell_price: Decimal = Decimal("0")
     cost_price: Decimal | None = None
     low_stock_threshold: Decimal = Decimal("0")
     aliases: list[str] = []
-    opening_stock: Decimal | None = None
-    opening_stock_unit: str | None = None  # None = base (sub) units
+    opening_stock: Decimal | None = None  # in `unit`
 
 
 class ProductPatch(BaseModel):
@@ -49,9 +46,7 @@ class ProductPatch(BaseModel):
     local_name: str | None = None  # "" clears it
     brand: str | None = None
     category: str | None = None
-    pack_unit: str | None = None
-    sub_unit: str | None = None
-    pack_size: Decimal | None = None
+    unit: str | None = None
     sell_price: Decimal | None = None
     cost_price: Decimal | None = None
     low_stock_threshold: Decimal | None = None
@@ -62,18 +57,17 @@ STOCK_REASONS = {"restock", "damage", "expired", "return", "adjustment", "openin
 
 
 class StockAdjustIn(BaseModel):
-    """Either qty + unit (converted to base units) or delta_qty already in base units."""
+    """Signed quantity in the product's own unit: positive adds stock, negative removes it."""
 
-    qty: Decimal | None = None
-    unit: str | None = None
-    delta_qty: Decimal | None = None
+    delta_qty: Decimal
     reason: str = "adjustment"
     note: str | None = None
 
 
 class StockCountIn(BaseModel):
+    """A physical count, in the product's own unit. The difference from current stock is recorded."""
+
     counted_qty: Decimal = Field(ge=0)
-    unit: str | None = None
     note: str | None = None
 
 
@@ -101,9 +95,7 @@ class ReviewProduct(BaseModel):
     id: uuid.UUID
     name: str
     brand: str
-    pack_unit: str
-    sub_unit: str
-    pack_size: Decimal
+    unit: str
     sell_price: Decimal
     stock_qty: Decimal
     local_name: str | None = None

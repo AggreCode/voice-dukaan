@@ -27,9 +27,7 @@ class CatalogProduct:
     name: str
     brand: str
     category: str
-    pack_unit: str
-    sub_unit: str
-    pack_size: Decimal
+    unit: str
     sell_price: Decimal
     stock_qty: Decimal
     aliases: list[str] = field(default_factory=list)
@@ -64,7 +62,7 @@ def _fmt(d: Decimal) -> str:
 def render_catalog(shop: Shop, products: list[CatalogProduct]) -> str:
     lines = [
         f"# CATALOG v{shop.catalog_version} shop={shop.id} type={shop.type}",
-        "# id|name|brand|aliases|pack_unit|sub_unit|pack_size|price_inr|category",
+        "# id|name|brand|aliases|unit|price_inr|category",
     ]
     learned_lines: list[str] = []
     for p in sorted(products, key=lambda x: x.code):
@@ -74,7 +72,7 @@ def render_catalog(shop: Shop, products: list[CatalogProduct]) -> str:
         aliases = base[:MAX_ALIASES_IN_COLUMN]
         lines.append("|".join([
             p.code, p.name, p.brand or "-", ",".join(aliases) or "-",
-            p.pack_unit, p.sub_unit, _fmt(p.pack_size), _fmt(p.sell_price), p.category,
+            p.unit, _fmt(p.sell_price), p.category,
         ]))
         for phrase in sorted(set(p.learned)):
             learned_lines.append(f'"{phrase}" -> {p.code}')
@@ -141,7 +139,7 @@ async def load_snapshot(session: AsyncSession, shop_id: uuid.UUID, *, use_cache:
         learned = [a.alias for a in r.aliases if a.source == "user_correction"]
         products.append(CatalogProduct(
             id=r.id, code=r.code, name=r.name, brand=r.brand, category=r.category,
-            pack_unit=r.pack_unit, sub_unit=r.sub_unit, pack_size=r.pack_size, sell_price=r.sell_price,
+            unit=r.unit, sell_price=r.sell_price,
             stock_qty=r.stock_qty, aliases=seed, learned=learned, sold_count=r.sold_count, local_name=r.local_name,
         ))
     snap = CatalogSnapshot(

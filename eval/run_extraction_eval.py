@@ -42,8 +42,7 @@ def snapshot_from_csv(csv_path: Path, shop_type: str) -> CatalogSnapshot:
             aliases = [a.strip() for a in (row.get("aliases") or "").split(";") if a.strip()]
             products.append(CatalogProduct(
                 id=uuid.uuid4(), code=f"p{i:03d}", name=row["name"], brand=row.get("brand") or "",
-                category=row.get("category") or "general", pack_unit=row.get("pack_unit") or "piece",
-                sub_unit=row.get("sub_unit") or "piece", pack_size=Decimal(row.get("pack_size") or "1"),
+                category=row.get("category") or "general", unit=row.get("unit") or "piece",
                 sell_price=Decimal(row.get("sell_price") or "0"), stock_qty=Decimal(0), aliases=aliases))
     shop = Shop(id=uuid.UUID(int=1), name="eval", type=shop_type, catalog_version=1)
     return CatalogSnapshot(shop_id=shop.id, version=1, products={p.code: p for p in products},

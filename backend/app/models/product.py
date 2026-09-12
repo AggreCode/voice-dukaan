@@ -13,6 +13,10 @@ from app.models.base import TimestampMixin, uuid_pk
 
 
 class Product(Base, TimestampMixin):
+    """A product has exactly one unit, chosen freely by the shop (a wholesaler tracks 'carton', a
+    pharmacy tracks 'strip', a grocer might track 'kg' or 'piece'). We never convert between units or
+    do pack-size math -- whatever unit the shop names is authoritative for both stock and price."""
+
     __tablename__ = "products"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -23,12 +27,10 @@ class Product(Base, TimestampMixin):
     local_name: Mapped[str | None] = mapped_column(String(200))  # e.g. ପାରାସିଟାମଲ, shown under the name
     brand: Mapped[str] = mapped_column(String(100), default="", nullable=False)
     category: Mapped[str] = mapped_column(String(50), default="general", nullable=False)
-    pack_unit: Mapped[str] = mapped_column(String(20), default="piece", nullable=False)  # what is normally sold
-    sub_unit: Mapped[str] = mapped_column(String(20), default="piece", nullable=False)  # stock base unit
-    pack_size: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("1"), nullable=False)  # sub per pack
-    sell_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"), nullable=False)  # per pack_unit
-    cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
-    stock_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0"), nullable=False)  # in sub_unit
+    unit: Mapped[str] = mapped_column(String(30), default="piece", nullable=False)  # free text, chosen by the shop
+    sell_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"), nullable=False)  # per unit
+    cost_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # per unit
+    stock_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0"), nullable=False)  # in unit
     low_stock_threshold: Mapped[Decimal] = mapped_column(Numeric(12, 3), default=Decimal("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sold_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

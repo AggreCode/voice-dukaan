@@ -25,11 +25,11 @@ export interface ProductOut {
   local_name: string | null;
   brand: string;
   category: string;
-  pack_unit: string;
-  sub_unit: string;
-  pack_size: number;
+  /** Free text, e.g. "kg", "box", "strip" — the ONLY unit this product has. */
+  unit: string;
   sell_price: number;
   cost_price: number | null;
+  /** In `unit`, no pack math. */
   stock_qty: number;
   low_stock_threshold: number;
   is_active: boolean;
@@ -38,30 +38,23 @@ export interface ProductOut {
 
 export interface ProductIn {
   name: string;
-  brand: string;
-  category: string;
-  pack_unit: string;
-  sub_unit: string;
-  pack_size: number;
-  sell_price: number;
-  low_stock_threshold: number;
-  aliases: string[];
-  /** Omit to let the server derive it from aliases in the shop's language script. */
   local_name?: string | null;
+  brand?: string;
+  category?: string;
+  /** Free text, required. */
+  unit: string;
+  sell_price?: number;
   cost_price?: number | null;
+  low_stock_threshold?: number;
+  aliases?: string[];
+  /** In `unit`. */
   opening_stock?: number | null;
-  /** pack_unit or sub_unit; omitted/null means base units (sub_unit). */
-  opening_stock_unit?: string | null;
 }
 
 /** PATCH /api/products/{id}. local_name "" clears it. */
-export type ProductUpdate = Partial<Omit<ProductIn, 'opening_stock' | 'opening_stock_unit'>> & { is_active?: boolean };
-
-export const UNITS = [
-  'piece', 'strip', 'packet', 'bottle', 'box', 'carton',
-  'kg', 'g', 'litre', 'ml', 'dozen', 'bundle', 'other',
-] as const;
-export type Unit = (typeof UNITS)[number];
+export type ProductPatch = Partial<ProductIn> & { is_active?: boolean };
+/** @deprecated use ProductPatch */
+export type ProductUpdate = ProductPatch;
 
 export type VoiceMode = 'sale' | 'stock_in';
 
@@ -72,7 +65,7 @@ export interface ExtractedItem {
   product_id: string | null; // product CODE like p001
   product_name_guess: string;
   quantity: number;
-  unit: Unit;
+  unit: string;
   unit_raw: string;
   unit_price: number | null;
   alternatives: { product_id: string; confidence: number }[];
@@ -96,9 +89,7 @@ export interface ReviewProduct {
   name: string;
   local_name: string | null;
   brand: string;
-  pack_unit: string;
-  sub_unit: string;
-  pack_size: number;
+  unit: string;
   sell_price: number;
   cost_price: number | null;
   stock_qty: number;
@@ -170,23 +161,26 @@ export interface TransactionOut {
   items: TransactionItemOut[];
 }
 
-/** Reasons the client may send to POST /api/products/{id}/stock. */
-export type StockAdjustReason = 'restock' | 'damage' | 'expired' | 'return' | 'adjustment';
-
 export type StockMovementReason =
   | 'sale' | 'purchase' | 'adjustment' | 'return' | 'opening' | 'void' | 'count' | 'restock' | 'damage' | 'expired';
 
-export type StockAdjustIn =
-  | { qty: number; unit: string; reason: StockAdjustReason; note?: string }
-  | { delta_qty: number; reason: string; note?: string };
+/** Free text; any reason string is accepted by the server. */
+export type StockAdjustReason = string;
 
-export interface StockCountIn {
-  counted_qty: number;
-  unit?: string;
-  note?: string;
+export interface StockAdjustIn {
+  /** Signed: positive adds, negative removes. */
+  delta_qty: number;
+  reason: string;
+  note?: string | null;
 }
 
-/** Quantities are in the product's sub_unit (base unit). */
+export interface StockCountIn {
+  /** >= 0 */
+  counted_qty: number;
+  note?: string | null;
+}
+
+/** Quantities are in the product's own unit. */
 export interface StockMovementOut {
   id: string;
   created_at: string;
@@ -220,7 +214,6 @@ export function normalizeProduct(p: ProductOut): ProductOut {
   return {
     ...p,
     local_name: strOrNull(p.local_name),
-    pack_size: num(p.pack_size, 1),
     sell_price: num(p.sell_price),
     cost_price: numOrNull(p.cost_price),
     stock_qty: num(p.stock_qty),
@@ -233,7 +226,6 @@ export function normalizeReviewProduct(p: ReviewProduct): ReviewProduct {
   return {
     ...p,
     local_name: strOrNull(p.local_name),
-    pack_size: num(p.pack_size, 1),
     sell_price: num(p.sell_price),
     cost_price: numOrNull(p.cost_price),
     stock_qty: num(p.stock_qty),

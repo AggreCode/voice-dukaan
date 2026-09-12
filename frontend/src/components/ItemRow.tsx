@@ -1,7 +1,7 @@
 import ConfidenceBadge, { confidenceLevel } from './ConfidenceBadge';
+import { COMMON_UNITS } from '../lib/constants';
 import { PriceKind, ReviewItem, defaultUnitPrice, lineTotal } from '../lib/reviewModel';
 import { formatStock } from '../lib/stock';
-import { UNITS, Unit } from '../lib/types';
 import { cx, fmtMoney } from '../lib/utils';
 
 interface Props {
@@ -21,8 +21,8 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
   const needsReview = item.original?.needs_review ?? false;
   const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
-  const setUnit = (unit: Unit) => {
-    const price = item.priceTouched ? item.unit_price : defaultUnitPrice(item.product, unit, priceKind) ?? item.unit_price;
+  const setUnit = (unit: string) => {
+    const price = item.priceTouched ? item.unit_price : defaultUnitPrice(item.product, priceKind) ?? item.unit_price;
     onChange({ ...item, unit, unit_price: price });
   };
 
@@ -55,7 +55,7 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
               {item.product.local_name && <div className="truncate text-sm text-slate-500">{item.product.local_name}</div>}
               <div className="truncate text-xs text-slate-500">
                 {item.product.brand ? item.product.brand + ' · ' : ''}
-                {item.product.code} · stock {formatStock(item.product.stock_qty, item.product)}
+                {item.product.code} · stock {formatStock(item.product.stock_qty, item.product.unit)}
               </div>
             </>
           ) : (
@@ -96,13 +96,17 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
         </label>
         <label className="text-[11px] text-slate-500">
           Unit {item.original?.unit_raw && item.original.unit_raw !== item.unit ? <span className="text-slate-400">({item.original.unit_raw})</span> : null}
-          <select className={field} value={item.unit} onChange={(e) => setUnit(e.target.value as Unit)}>
-            {UNITS.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
+          <input
+            className={field}
+            list="item-row-units"
+            value={item.unit}
+            onChange={(e) => setUnit(e.target.value)}
+          />
+          <datalist id="item-row-units">
+            {COMMON_UNITS.map((u) => (
+              <option key={u} value={u} />
             ))}
-          </select>
+          </datalist>
         </label>
         <label className="text-[11px] text-slate-500">
           {priceKind === 'cost' ? 'Cost per unit ₹' : 'Price ₹'}

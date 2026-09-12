@@ -21,7 +21,7 @@ from sqlalchemy import text  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import get_engine  # noqa: E402
 from app.extraction.base import ExtractionOutcome  # noqa: E402
-from app.schemas.extraction import Alternative, BillExtraction, ExtractedItem, Intent, Unit  # noqa: E402
+from app.schemas.extraction import Alternative, BillExtraction, ExtractedItem, Intent  # noqa: E402
 from app.stt.base import STTResult  # noqa: E402
 
 pytestmark = pytest.mark.asyncio
@@ -94,10 +94,10 @@ async def test_full_flow(tmp_path, monkeypatch):
         intent=Intent.sale, customer_name=None, payment_mode=None, notes="", transcript_language="mixed",
         items=[
             ExtractedItem(spoken_span="paracetamol dasa gota", product_id="p001", product_name_guess="Paracetamol",
-                          quantity=10, unit=Unit.piece, unit_raw="gota", unit_price=None, alternatives=[],
+                          quantity=10, unit="piece", unit_price=None, alternatives=[],
                           confidence=0.96, needs_review=False, reason=""),
             ExtractedItem(spoken_span="crocin dui patta", product_id="p002", product_name_guess="Crocin",
-                          quantity=2, unit=Unit.strip, unit_raw="patta", unit_price=None,
+                          quantity=2, unit="strip", unit_price=None,
                           alternatives=[Alternative(product_id="p001", confidence=0.2)],
                           confidence=0.7, needs_review=False, reason=""),
         ])
@@ -112,10 +112,10 @@ async def test_full_flow(tmp_path, monkeypatch):
         shop_id = r.json()["shop"]["id"]
         h = {"X-Shop-Id": shop_id}
 
-        for name, pack in [("Paracetamol 500mg", 10), ("Crocin 500", 15)]:
+        for name in ("Paracetamol 500mg", "Crocin 500"):
             r = await c.post("/api/products", headers=h, json={
-                "name": name, "brand": "X", "pack_unit": "strip", "sub_unit": "piece", "pack_size": pack,
-                "sell_price": 20, "aliases": ["alias1"], "opening_stock": 100})
+                "name": name, "brand": "X", "unit": "strip", "sell_price": 20, "aliases": ["alias1"],
+                "opening_stock": 100})
             assert r.status_code == 201, r.text
         prods = {p["code"]: p for p in (await c.get("/api/products", headers=h)).json()}
         assert set(prods) == {"p001", "p002"}
@@ -137,7 +137,7 @@ async def test_full_flow(tmp_path, monkeypatch):
         items = vs["extraction"]["items"]
         assert items[0]["needs_review"] is False
         assert items[1]["needs_review"] is True and items[1]["reason"] == "low_confidence"  # floor 0.75
-        assert "p001|Paracetamol 500mg|X|alias1|strip|piece|10|20|general" in fake_llm.last_request["catalog"]
+        assert "p001|Paracetamol 500mg|X|alias1|strip|20|general" in fake_llm.last_request["catalog"]
         assert vs["latencies"]["total_ms"] >= 0
 
         # idempotent retry returns the same session
@@ -164,7 +164,9 @@ async def test_full_flow(tmp_path, monkeypatch):
         assert txn["items"][1]["was_corrected"] is True
 
         prods = {p["code"]: p for p in (await c.get("/api/products", headers=h)).json()}
-        assert float(prods["p001"]["stock_qty"]) == 100 - 10 - 2 * 10  # 10 pieces + 2 strips of 10
+        # no unit conversion any more: both sale lines were corrected onto p001, so its stock drops by
+        # the literal quantities sold (10 + 2), whatever unit word was attached to each line
+        assert float(prods["p001"]["stock_qty"]) == 100 - 10 - 2
         assert float(prods["p002"]["stock_qty"]) == 100
         # "crocin dui patta" cleans to "crocin", which is the leading word of the other product's
         # name, so it is deliberately NOT learned - that would hide Crocin 500 from every later bill.

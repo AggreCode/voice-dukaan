@@ -35,6 +35,6 @@ async def test_mock_extractor_defaults_to_purchase_in_stock_in_mode():
 def test_catalog_block_lists_local_name_first():
     shop = Shop(id=uuid.uuid4(), name="s", type="medical", catalog_version=1)
     prod = CatalogProduct(id=uuid.uuid4(), code="p001", name="ORS Electral", brand="FDC", category="medicine",
-                          pack_unit="packet", sub_unit="packet", pack_size=Decimal(1), sell_price=Decimal(22),
-                          stock_qty=Decimal(0), aliases=["ors"], local_name="ଓଆରଏସ")
-    assert "p001|ORS Electral|FDC|ଓଆରଏସ,ors|packet" in render_catalog(shop, [prod])
+                          unit="packet", sell_price=Decimal(22), stock_qty=Decimal(0), aliases=["ors"],
+                          local_name="ଓଆରଏସ")
+    assert "p001|ORS Electral|FDC|ଓଆରଏସ,ors|packet|22|medicine" in render_catalog(shop, [prod])

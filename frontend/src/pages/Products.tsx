@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
-import { CSV_COLUMNS, LOCAL_NAME_HELP, LOCAL_NAME_PLACEHOLDER, STOCK_ADJUST_REASONS, movementReasonLabel } from '../lib/constants';
-import { formatSignedQty, formatStock, hasPacks, stockUnitOptions, toBaseQty, unitLabel } from '../lib/stock';
-import { ProductOut, ProductUpdate, StockAdjustReason, numOrNull } from '../lib/types';
-import { cx, fmtDateTime, fmtMoney, fmtQty } from '../lib/utils';
+import { COMMON_UNITS, CSV_COLUMNS, LOCAL_NAME_HELP, LOCAL_NAME_PLACEHOLDER, STOCK_ADJUST_REASONS, movementReasonLabel } from '../lib/constants';
+import { formatSignedQty, formatStock } from '../lib/stock';
+import { ProductOut, ProductPatch, StockAdjustReason, numOrNull } from '../lib/types';
+import { cx, fmtDateTime, fmtMoney } from '../lib/utils';
 import { useToast } from '../components/Toast';
-import { AddProductInline, unitChoices } from '../components/AddProductInline';
+import { AddProductInline } from '../components/AddProductInline';
 
 const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 const sectionTitle = 'text-xs font-semibold uppercase tracking-wide text-slate-500';
@@ -97,7 +97,6 @@ export default function Products() {
       {adding && (
         <div className="mb-3">
           <AddProductInline
-            variant="full"
             initialName={q}
             onCancel={() => setAdding(false)}
             onCreated={() => {
@@ -156,12 +155,11 @@ export default function Products() {
                   {p.local_name && <div className="truncate text-sm text-slate-500">{p.local_name}</div>}
                   <div className="truncate text-xs text-slate-500">
                     {p.brand ? p.brand + ' · ' : ''}
-                    {p.code} · {fmtMoney(p.sell_price)}/{p.pack_unit}
-                    {hasPacks(p) ? ` · ${fmtQty(p.pack_size)} ${unitLabel(p.sub_unit, p.pack_size)}` : ''}
+                    {p.code} · {fmtMoney(p.sell_price)}/{p.unit}
                   </div>
                 </div>
                 <div className="max-w-[45%] shrink-0 text-right">
-                  <div className={cx('text-sm font-bold leading-tight', low ? 'text-amber-700' : 'text-slate-800')}>{formatStock(p.stock_qty, p)}</div>
+                  <div className={cx('text-sm font-bold leading-tight', low ? 'text-amber-700' : 'text-slate-800')}>{formatStock(p.stock_qty, p.unit)}</div>
                   {low && (
                     <div className="mt-1">
                       <LowBadge />
@@ -203,9 +201,7 @@ interface DetailsForm {
   brand: string;
   local_name: string;
   category: string;
-  pack_unit: string;
-  sub_unit: string;
-  pack_size: string;
+  unit: string;
   sell_price: string;
   cost_price: string;
   low_stock_threshold: string;
@@ -218,29 +214,21 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
     brand: product.brand,
     local_name: product.local_name ?? '',
     category: product.category,
-    pack_unit: product.pack_unit,
-    sub_unit: product.sub_unit,
-    pack_size: String(product.pack_size),
+    unit: product.unit,
     sell_price: String(product.sell_price),
     cost_price: product.cost_price === null ? '' : String(product.cost_price),
     low_stock_threshold: String(product.low_stock_threshold),
   });
-  const units = stockUnitOptions(product);
 
-  // (a) add / remove
+  // (a) add / remove — always in the product's own unit
   const [adjQty, setAdjQty] = useState('');
-  const [adjUnit, setAdjUnit] = useState(units[0] ?? '');
   const [reason, setReason] = useState<StockAdjustReason>('restock');
   const [adjNote, setAdjNote] = useState('');
   // (b) count
   const [countQty, setCountQty] = useState('');
-  const [countUnit, setCountUnit] = useState(units[0] ?? '');
   // aliases
   const [alias, setAlias] = useState('');
   const [aliasLang, setAliasLang] = useState('or');
-
-  const effAdjUnit = units.includes(adjUnit) ? adjUnit : units[0] ?? '';
-  const effCountUnit = units.includes(countUnit) ? countUnit : units[0] ?? '';
 
   const onErr = (e: unknown) => toast.error(e instanceof ApiError ? e.message : (e as Error).message);
 
@@ -251,14 +239,12 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
 
   const update = useMutation({
     mutationFn: () => {
-      const body: ProductUpdate = {
+      const body: ProductPatch = {
         name: form.name.trim(),
         brand: form.brand.trim(),
         local_name: form.local_name.trim(), // empty string clears it
         category: form.category.trim(),
-        pack_unit: form.pack_unit,
-        sub_unit: form.sub_unit,
-        pack_size: Number(form.pack_size) || 1,
+        unit: form.unit.trim(),
         sell_price: Number(form.sell_price) || 0,
         cost_price: numOrNull(form.cost_price),
         low_stock_threshold: Number(form.low_stock_threshold) || 0,
@@ -274,9 +260,9 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
 
   const adjust = useMutation({
     mutationFn: (sign: 1 | -1) =>
-      api.products.addStock(product.id, { qty: sign * Number(adjQty), unit: effAdjUnit, reason, note: adjNote.trim() || undefined }),
+      api.products.addStock(product.id, { delta_qty: sign * Number(adjQty), reason, note: adjNote.trim() || undefined }),
     onSuccess: (p, sign) => {
-      toast.success(`${sign > 0 ? 'Added' : 'Removed'}. Stock now ${formatStock(p.stock_qty, p)}`);
+      toast.success(`${sign > 0 ? 'Added' : 'Removed'}. Stock now ${formatStock(p.stock_qty, p.unit)}`);
       setAdjQty('');
       setAdjNote('');
       onChanged(p);
@@ -285,9 +271,9 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
   });
 
   const count = useMutation({
-    mutationFn: () => api.products.countStock(product.id, { counted_qty: Number(countQty), unit: effCountUnit }),
+    mutationFn: () => api.products.countStock(product.id, { counted_qty: Number(countQty) }),
     onSuccess: (p) => {
-      toast.success(`Stock set to ${formatStock(p.stock_qty, p)}`);
+      toast.success(`Stock set to ${formatStock(p.stock_qty, p.unit)}`);
       setCountQty('');
       onChanged(p);
     },
@@ -317,11 +303,11 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
   });
 
   const adjN = Number(adjQty);
-  const adjValid = adjQty.trim() !== '' && Number.isFinite(adjN) && adjN > 0 && !!effAdjUnit;
+  const adjValid = adjQty.trim() !== '' && Number.isFinite(adjN) && adjN > 0;
   const counted = numOrNull(countQty);
-  const countValid = counted !== null && counted >= 0 && !!effCountUnit;
-  const current = formatStock(product.stock_qty, product);
-  const after = countValid ? formatStock(toBaseQty(counted, effCountUnit, product), product) : '—';
+  const countValid = counted !== null && counted >= 0;
+  const current = formatStock(product.stock_qty, product.unit);
+  const after = countValid ? formatStock(counted, product.unit) : '—';
   const low = isLow(product);
 
   return (
@@ -346,11 +332,6 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
             </div>
             <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
               <span>{low ? <LowBadge /> : null}</span>
-              {hasPacks(product) && (
-                <span className="text-right">
-                  {fmtQty(product.stock_qty)} {unitLabel(product.sub_unit, product.stock_qty)} total · {fmtQty(product.pack_size)} {unitLabel(product.sub_unit, product.pack_size)} per {product.pack_unit}
-                </span>
-              )}
             </div>
           </section>
 
@@ -359,14 +340,8 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
             <p className={sectionTitle}>Add or remove stock</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="text-xs text-slate-600">
-                Quantity
+                Qty ({product.unit})
                 <input type="number" inputMode="decimal" min={0} step="any" value={adjQty} onChange={(e) => setAdjQty(e.target.value)} placeholder="0" className={field} />
-              </label>
-              <label className="text-xs text-slate-600">
-                Unit
-                <select value={effAdjUnit} onChange={(e) => setAdjUnit(e.target.value)} className={field}>
-                  {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
               </label>
               <label className="text-xs text-slate-600">
                 Reason
@@ -374,7 +349,7 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
                   {STOCK_ADJUST_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </label>
-              <label className="text-xs text-slate-600">
+              <label className="col-span-2 text-xs text-slate-600">
                 Note
                 <input value={adjNote} onChange={(e) => setAdjNote(e.target.value)} placeholder="Optional" className={field} />
               </label>
@@ -402,16 +377,10 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
           {/* (b) Correct stock count */}
           <section className="rounded-xl border border-slate-200 p-3">
             <p className={sectionTitle}>Correct stock count</p>
-            <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+            <div className="mt-2 grid grid-cols-[1fr_auto] items-end gap-2">
               <label className="text-xs text-slate-600">
-                I counted
+                I counted ({product.unit})
                 <input type="number" inputMode="decimal" min={0} step="any" value={countQty} onChange={(e) => setCountQty(e.target.value)} placeholder="0" className={field} />
-              </label>
-              <label className="text-xs text-slate-600">
-                Unit
-                <select value={effCountUnit} onChange={(e) => setCountUnit(e.target.value)} className={field}>
-                  {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
               </label>
               <button
                 type="button"
@@ -449,9 +418,9 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
                     </div>
                     <div className="shrink-0 text-right">
                       <div className={cx('text-sm font-semibold', m.delta_qty > 0 ? 'text-emerald-700' : m.delta_qty < 0 ? 'text-red-700' : 'text-slate-600')}>
-                        {formatSignedQty(m.delta_qty, product)}
+                        {formatSignedQty(m.delta_qty, product.unit)}
                       </div>
-                      <div className="text-[11px] text-slate-500">Balance: {formatStock(m.balance_after, product)}</div>
+                      <div className="text-[11px] text-slate-500">Balance: {formatStock(m.balance_after, product.unit)}</div>
                     </div>
                   </li>
                 ))}
@@ -507,25 +476,24 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
               <label className="text-xs text-slate-600">Brand<input className={field} value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></label>
               <label className="text-xs text-slate-600">Category<input className={field} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
               <label className="text-xs text-slate-600">
-                Pack unit
-                <select className={field} value={form.pack_unit} onChange={(e) => setForm({ ...form, pack_unit: e.target.value })}>
-                  {unitChoices(form.pack_unit).map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
+                Unit
+                <input
+                  className={field}
+                  list="edit-product-units"
+                  value={form.unit}
+                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                  required
+                />
+                <datalist id="edit-product-units">
+                  {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
+                </datalist>
               </label>
               <label className="text-xs text-slate-600">
-                Sub unit
-                <select className={field} value={form.sub_unit} onChange={(e) => setForm({ ...form, sub_unit: e.target.value })}>
-                  <option value="">(none)</option>
-                  {unitChoices(form.sub_unit).map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-slate-600">Pack size<input className={field} type="number" inputMode="decimal" min={1} step="any" value={form.pack_size} onChange={(e) => setForm({ ...form, pack_size: e.target.value })} /></label>
-              <label className="text-xs text-slate-600">
-                Low stock at ({unitLabel(form.sub_unit || form.pack_unit, 2)})
+                Low stock at ({form.unit || 'unit'})
                 <input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} />
               </label>
-              <label className="text-xs text-slate-600">Selling price (₹/{form.pack_unit})<input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} /></label>
-              <label className="text-xs text-slate-600">Cost price (₹/{form.pack_unit})<input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.cost_price} placeholder="Optional" onChange={(e) => setForm({ ...form, cost_price: e.target.value })} /></label>
+              <label className="text-xs text-slate-600">Selling price (₹/{form.unit || 'unit'})<input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} /></label>
+              <label className="text-xs text-slate-600">Cost price (₹/{form.unit || 'unit'})<input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.cost_price} placeholder="Optional" onChange={(e) => setForm({ ...form, cost_price: e.target.value })} /></label>
             </div>
             <button type="submit" disabled={update.isPending} className="mt-3 min-h-[48px] w-full rounded-lg bg-primary font-semibold text-white disabled:opacity-60">
               {update.isPending ? 'Saving…' : 'Save details'}

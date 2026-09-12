@@ -13,7 +13,7 @@ import re
 import time
 
 from app.extraction.base import ExtractionOutcome, ShopContext
-from app.schemas.extraction import BillExtraction, ExtractedItem, Intent, Unit
+from app.schemas.extraction import BillExtraction, ExtractedItem, Intent
 from app.services.catalog import CatalogSnapshot
 
 _SPLIT_RE = re.compile(r"\s*\|\s*|\s*,\s*")
@@ -41,8 +41,7 @@ class MockExtractor:
                 product_id=None,
                 product_name_guess=frag,
                 quantity=1,
-                unit=Unit.other,
-                unit_raw="",
+                unit="",
                 unit_price=None,
                 alternatives=[],
                 confidence=0.0,

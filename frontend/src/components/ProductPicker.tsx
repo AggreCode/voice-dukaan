@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { PickedProduct, toPicked } from '../lib/reviewModel';
 import { formatStock } from '../lib/stock';
-import { cx, fmtMoney, fmtQty } from '../lib/utils';
+import { cx, fmtMoney } from '../lib/utils';
 import { AddProductInline } from './AddProductInline';
 
 interface Alternative { product_id: string; confidence: number }
@@ -109,7 +109,7 @@ export default function ProductPicker({ open, onClose, onSelect, alternatives = 
                         <div className="truncate font-medium">{a.product?.name ?? a.product_id}</div>
                         {a.product?.local_name && <div className="truncate text-sm text-slate-500">{a.product.local_name}</div>}
                         <div className="truncate text-xs text-slate-500">
-                          {a.product ? `${a.product.brand ? a.product.brand + ' · ' : ''}${fmtMoney(a.product.sell_price)}/${a.product.pack_unit} · stock ${formatStock(a.product.stock_qty, a.product)}` : 'not in catalogue'}
+                          {a.product ? `${a.product.brand ? a.product.brand + ' · ' : ''}${fmtMoney(a.product.sell_price)}/${a.product.unit} · stock ${formatStock(a.product.stock_qty, a.product.unit)}` : 'not in catalogue'}
                         </div>
                         <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-slate-100">
                           <div
@@ -149,8 +149,7 @@ export default function ProductPicker({ open, onClose, onSelect, alternatives = 
                       {p.local_name && <div className="truncate text-sm text-slate-500">{p.local_name}</div>}
                       <div className="truncate text-xs text-slate-500">
                         {p.brand ? p.brand + ' · ' : ''}
-                        {fmtMoney(p.sell_price)}/{p.pack_unit}
-                        {p.sub_unit && p.pack_size > 1 ? ` (${fmtQty(p.pack_size)} ${p.sub_unit})` : ''} · stock {formatStock(p.stock_qty, p)}
+                        {fmtMoney(p.sell_price)}/{p.unit} · stock {formatStock(p.stock_qty, p.unit)}
                       </div>
                     </div>
                     <span className="text-xs text-slate-400">{p.code}</span>

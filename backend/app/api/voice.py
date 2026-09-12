@@ -51,9 +51,9 @@ async def _to_out(session: AsyncSession, vs: VoiceSession) -> VoiceSessionOut:
         if codes:
             rows = (await session.execute(select(Product).where(
                 Product.shop_id == vs.shop_id, Product.code.in_(codes)))).scalars().all()
-            review = [ReviewProduct(code=p.code, id=p.id, name=p.name, brand=p.brand, pack_unit=p.pack_unit,
-                                    sub_unit=p.sub_unit, pack_size=p.pack_size, sell_price=p.sell_price,
-                                    stock_qty=p.stock_qty, local_name=p.local_name, cost_price=p.cost_price)
+            review = [ReviewProduct(code=p.code, id=p.id, name=p.name, brand=p.brand, unit=p.unit,
+                                    sell_price=p.sell_price, stock_qty=p.stock_qty,
+                                    local_name=p.local_name, cost_price=p.cost_price)
                       for p in rows]
     meta = vs.sarvam_meta or {}
     prob = meta.get("language_probability")

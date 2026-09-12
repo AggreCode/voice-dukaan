@@ -4,8 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import ProductPicker from '../components/ProductPicker';
 import { useToast } from '../components/Toast';
 import { api, ApiError } from '../lib/api';
+import { COMMON_UNITS } from '../lib/constants';
 import { PickedProduct, defaultUnitPrice, round2 } from '../lib/reviewModel';
-import { formatStock, stockUnitOptions } from '../lib/stock';
+import { formatStock } from '../lib/stock';
 import { PaymentMode, TransactionIn } from '../lib/types';
 import { cx, fmtMoney } from '../lib/utils';
 
@@ -55,15 +56,11 @@ export default function StockIn() {
   const patchRow = (key: string, fn: (r: Row) => Row) => setRows((prev) => prev.map((r) => (r.key === key ? fn(r) : r)));
 
   const pickProduct = (key: string, p: PickedProduct) => {
-    patchRow(key, (r) => {
-      const unit = stockUnitOptions(p)[0] ?? p.pack_unit;
-      return { ...r, product: p, unit, cost: r.costTouched ? r.cost : priceStr(defaultUnitPrice(p, unit, 'cost')) };
-    });
+    patchRow(key, (r) => ({ ...r, product: p, unit: p.unit, cost: r.costTouched ? r.cost : priceStr(defaultUnitPrice(p, 'cost')) }));
     setPickerFor(null);
   };
 
-  const setUnit = (key: string, unit: string) =>
-    patchRow(key, (r) => ({ ...r, unit, cost: r.costTouched ? r.cost : priceStr(defaultUnitPrice(r.product, unit, 'cost')) }));
+  const setUnit = (key: string, unit: string) => patchRow(key, (r) => ({ ...r, unit }));
 
   const addRow = () => {
     const r = newRow();
@@ -129,7 +126,6 @@ export default function StockIn() {
 
       <ul className="space-y-2">
         {rows.map((r, idx) => {
-          const units = r.product ? stockUnitOptions(r.product) : [];
           return (
             <li key={r.key} className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-start gap-2">
@@ -145,7 +141,7 @@ export default function StockIn() {
                     <>
                       <div className="truncate font-semibold text-slate-900">{r.product.name}</div>
                       {r.product.local_name && <div className="truncate text-sm text-slate-500">{r.product.local_name}</div>}
-                      <div className="truncate text-xs text-slate-500">In stock: {formatStock(r.product.stock_qty, r.product)}</div>
+                      <div className="truncate text-xs text-slate-500">In stock: {formatStock(r.product.stock_qty, r.product.unit)}</div>
                     </>
                   ) : (
                     <>
@@ -180,14 +176,18 @@ export default function StockIn() {
                 </label>
                 <label className="text-[11px] text-slate-500">
                   Unit
-                  <select className={field} value={r.unit} disabled={!r.product} onChange={(e) => setUnit(r.key, e.target.value)}>
-                    {units.length === 0 && <option value="">—</option>}
-                    {units.map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
+                  <input
+                    className={field}
+                    list="stock-in-units"
+                    value={r.unit}
+                    placeholder="e.g. kg"
+                    onChange={(e) => setUnit(r.key, e.target.value)}
+                  />
+                  <datalist id="stock-in-units">
+                    {COMMON_UNITS.map((u) => (
+                      <option key={u} value={u} />
                     ))}
-                  </select>
+                  </datalist>
                 </label>
                 <label className="text-[11px] text-slate-500">
                   Cost per unit ₹

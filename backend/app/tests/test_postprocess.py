@@ -2,20 +2,19 @@ import uuid
 from decimal import Decimal
 
 from app.extraction.postprocess import apply_guards, has_number_evidence
-from app.schemas.extraction import Alternative, BillExtraction, ExtractedItem, Intent, Unit
+from app.schemas.extraction import Alternative, BillExtraction, ExtractedItem, Intent
 from app.services.catalog import CatalogProduct, CatalogSnapshot
 
 
 def _snap(codes=("p001", "p002")) -> CatalogSnapshot:
     products = {c: CatalogProduct(id=uuid.uuid4(), code=c, name=f"Prod {c}", brand="", category="medicine",
-                                  pack_unit="strip", sub_unit="piece", pack_size=Decimal(10),
-                                  sell_price=Decimal(20), stock_qty=Decimal(0)) for c in codes}
+                                  unit="strip", sell_price=Decimal(20), stock_qty=Decimal(0)) for c in codes}
     return CatalogSnapshot(shop_id=uuid.uuid4(), version=1, products=products, rendered="", hints=[])
 
 
 def _item(**kw) -> ExtractedItem:
     base = dict(spoken_span="paracetamol dasa gota", product_id="p001", product_name_guess="Prod p001", quantity=10,
-                unit=Unit.piece, unit_raw="gota", unit_price=None, alternatives=[], confidence=0.95,
+                unit="piece", unit_price=None, alternatives=[], confidence=0.95,
                 needs_review=False, reason="")
     base.update(kw)
     return ExtractedItem(**base)

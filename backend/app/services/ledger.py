@@ -1,9 +1,13 @@
 """Saving a reviewed bill: transaction + items + stock ledger + corrections + learned aliases,
-all in one DB transaction."""
+all in one DB transaction.
+
+Quantities are stored and moved in whatever unit the product itself uses -- there is no pack/sub-unit
+conversion. If a spoken or typed unit does not match the product's registered unit, that is caught by
+the guards (extraction/postprocess.py) as a mismatch to review, not silently converted here.
+"""
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -22,39 +26,6 @@ from app.models import (
 from app.schemas.api import SaveBillIn
 from app.services import catalog as catalog_svc
 from app.services.spoken import clean_learned_alias
-
-PACK_UNITS = {"strip", "packet", "bottle", "box", "carton", "bundle", "dozen"}
-
-
-def to_base_qty(qty: Decimal, unit: str, product: Product) -> Decimal:
-    """Convert a spoken quantity to the product's sub_unit (stock base unit)."""
-    unit = unit or product.pack_unit
-    if unit == product.sub_unit:
-        return qty
-    if unit == product.pack_unit:
-        return qty * product.pack_size
-    if unit == "dozen" and product.sub_unit == "piece":
-        return qty * 12
-    if unit == "kg" and product.sub_unit == "g":
-        return qty * 1000
-    if unit == "g" and product.sub_unit == "kg":
-        return qty / 1000
-    if unit == "litre" and product.sub_unit == "ml":
-        return qty * 1000
-    if unit == "ml" and product.sub_unit == "litre":
-        return qty / 1000
-    if unit in PACK_UNITS and product.sub_unit == "piece":
-        return qty * product.pack_size
-    return qty
-
-
-def price_for(unit: str, product: Product) -> Decimal:
-    """Default price for a unit given the catalog sell_price (per pack_unit)."""
-    if unit == product.pack_unit or not unit:
-        return product.sell_price
-    if unit == product.sub_unit and product.pack_size:
-        return (product.sell_price / product.pack_size).quantize(Decimal("0.01"))
-    return product.sell_price
 
 
 async def apply_stock_movement(session: AsyncSession, product: Product, delta: Decimal, *, reason: str,
@@ -101,7 +72,6 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
 
     for item in body.items:
         product = products[item.product_code]
-        qty_base = to_base_qty(item.qty, item.unit, product)
         line_total = (item.qty * item.unit_price).quantize(Decimal("0.01"))
         total += line_total
         llm = None
@@ -116,12 +86,12 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
             was_corrected = (llm.get("product_id") != item.product_code or llm.get("quantity") != float(item.qty)
                              or llm.get("unit") != item.unit)
         ti = TransactionItem(transaction_id=txn.id, product_id=product.id, qty=item.qty, unit=item.unit,
-                             qty_base=qty_base, unit_price=item.unit_price, line_total=line_total,
+                             qty_base=item.qty, unit_price=item.unit_price, line_total=line_total,
                              spoken_span=item.spoken_span, llm_confidence=item.llm_confidence,
                              was_corrected=was_corrected)
         session.add(ti)
         await session.flush()
-        await apply_stock_movement(session, product, sign * qty_base, reason=body.type,
+        await apply_stock_movement(session, product, sign * item.qty, reason=body.type,
                                    ref_type="transaction_item", ref_id=ti.id)
         if body.type == "sale":
             product.sold_count = (product.sold_count or 0) + 1
@@ -201,10 +171,9 @@ async def _learn_alias(session: AsyncSession, product: Product, span: str) -> bo
         ProductAlias.product_id == product.id, ProductAlias.alias == alias))).scalar_one_or_none()
     if existing:
         existing.hit_count += 1
-        existing.last_used_at = datetime.now(timezone.utc)
         return False
     session.add(ProductAlias(product_id=product.id, alias=alias, lang="mixed", source="user_correction",
-                             hit_count=1, last_used_at=datetime.now(timezone.utc)))
+                             hit_count=1))
     return True
 
 

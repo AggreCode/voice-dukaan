@@ -58,8 +58,7 @@ async def main() -> None:
                 row_aliases = [x.strip() for x in (row.get("aliases") or "").split(";") if x.strip()]
                 p = Product(
                     shop_id=shop.id, code=f"p{n:03d}", name=row["name"].strip(), brand=(row.get("brand") or "").strip(),
-                    category=row.get("category") or "general", pack_unit=row.get("pack_unit") or "piece",
-                    sub_unit=row.get("sub_unit") or "piece", pack_size=Decimal(row.get("pack_size") or "1"),
+                    category=row.get("category") or "general", unit=row.get("unit") or "piece",
                     sell_price=Decimal(row.get("sell_price") or "0"),
                     local_name=(row.get("local_name") or "").strip() or pick_local_name(row_aliases, shop.default_language),
                 )

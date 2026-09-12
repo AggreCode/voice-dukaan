@@ -10,14 +10,13 @@ from app.services.catalog import CatalogProduct, CatalogSnapshot
 
 BILL = {"intent": "sale", "customer_name": None, "payment_mode": None, "notes": "", "transcript_language": "od",
         "items": [{"spoken_span": "paracetamol dasa gota", "product_id": "p001", "product_name_guess": "Paracetamol",
-                   "quantity": 10, "unit": "piece", "unit_raw": "gota", "unit_price": None, "alternatives": [],
+                   "quantity": 10, "unit": "piece", "unit_price": None, "alternatives": [],
                    "confidence": 0.97, "needs_review": False, "reason": ""}]}
 
 
 def _snap():
     p = CatalogProduct(id=uuid.uuid4(), code="p001", name="Paracetamol 500mg", brand="Cipla", category="medicine",
-                       pack_unit="strip", sub_unit="piece", pack_size=Decimal(10), sell_price=Decimal(20),
-                       stock_qty=Decimal(0))
+                       unit="strip", sell_price=Decimal(20), stock_qty=Decimal(0))
     return CatalogSnapshot(shop_id=uuid.uuid4(), version=1, products={"p001": p}, rendered="# CATALOG\np001|...",
                            hints=[])
 

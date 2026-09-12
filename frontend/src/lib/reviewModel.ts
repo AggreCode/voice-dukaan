@@ -1,4 +1,4 @@
-import { ExtractedItem, ProductOut, ReviewProduct, UNITS, Unit, VoiceSessionOut } from './types';
+import { ExtractedItem, ProductOut, ReviewProduct, VoiceSessionOut } from './types';
 
 /** Common shape for a product chosen in review (from review_products or /api/products). */
 export interface PickedProduct {
@@ -7,9 +7,7 @@ export interface PickedProduct {
   name: string;
   local_name: string | null;
   brand: string;
-  pack_unit: string;
-  sub_unit: string;
-  pack_size: number;
+  unit: string;
   sell_price: number;
   cost_price: number | null;
   stock_qty: number;
@@ -29,9 +27,7 @@ export function toPicked(p: ProductOut | ReviewProduct): PickedProduct {
     name: p.name,
     local_name: p.local_name ?? null,
     brand: p.brand,
-    pack_unit: p.pack_unit,
-    sub_unit: p.sub_unit,
-    pack_size: Number(p.pack_size) || 1,
+    unit: p.unit,
     sell_price: Number(p.sell_price) || 0,
     cost_price: p.cost_price === null || p.cost_price === undefined || !Number.isFinite(Number(p.cost_price)) ? null : Number(p.cost_price),
     stock_qty: Number(p.stock_qty) || 0,
@@ -43,31 +39,21 @@ export interface ReviewItem {
   item_index: number | null;
   product: PickedProduct | null;
   qty: number;
-  unit: Unit;
+  unit: string;
   unit_price: number;
   /** true once the user has typed a price, so re-picking a product/unit won't overwrite it */
   priceTouched: boolean;
   original: ExtractedItem | null;
 }
 
-/**
- * Default unit price. Base price is sell_price, or for kind "cost" the cost_price when set (> 0), else sell_price.
- * pack_unit -> base ; sub_unit -> base / pack_size ; otherwise base.
- */
-export function defaultUnitPrice(product: PickedProduct | null, unit: string, kind: PriceKind = 'sell'): number | null {
+/** Default unit price: sell_price, or for kind "cost" the cost_price when set (> 0), else sell_price. */
+export function defaultUnitPrice(product: PickedProduct | null, kind: PriceKind = 'sell'): number | null {
   if (!product) return null;
-  const base = kind === 'cost' && product.cost_price !== null && product.cost_price > 0 ? product.cost_price : product.sell_price;
-  if (unit === product.pack_unit) return base;
-  if (unit === product.sub_unit && product.pack_size > 0) return round2(base / product.pack_size);
-  return base;
+  return kind === 'cost' && product.cost_price !== null && product.cost_price > 0 ? product.cost_price : product.sell_price;
 }
 
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-export function asUnit(u: string | null | undefined): Unit {
-  return (UNITS as readonly string[]).includes(u ?? '') ? (u as Unit) : 'other';
 }
 
 let keySeq = 0;
@@ -82,9 +68,9 @@ export function buildReviewItems(session: VoiceSessionOut, kind: PriceKind = 'se
   const items = session.extraction?.items ?? [];
   return items.map((it, idx) => {
     const product = it.product_id ? byCode.get(it.product_id) ?? null : null;
-    const unit = asUnit(it.unit);
+    const unit = it.unit || product?.unit || 'piece';
     const llmPrice = it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
-    const price = llmPrice ?? defaultUnitPrice(product, unit, kind) ?? 0;
+    const price = llmPrice ?? defaultUnitPrice(product, kind) ?? 0;
     return {
       key: nextKey(),
       item_index: idx,

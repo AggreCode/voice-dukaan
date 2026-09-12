@@ -6,8 +6,8 @@ from app.services.catalog import CatalogProduct, build_hints, render_catalog
 
 
 def _prod(code, name, aliases=(), learned=(), sold=0):
-    return CatalogProduct(id=uuid.uuid4(), code=code, name=name, brand="B", category="medicine", pack_unit="strip",
-                          sub_unit="piece", pack_size=Decimal(10), sell_price=Decimal("20.50"), stock_qty=Decimal(5),
+    return CatalogProduct(id=uuid.uuid4(), code=code, name=name, brand="B", category="medicine", unit="strip",
+                          sell_price=Decimal("20.50"), stock_qty=Decimal(5),
                           aliases=list(aliases), learned=list(learned), sold_count=sold)
 
 
@@ -20,7 +20,7 @@ def test_render_is_sorted_stable_and_has_learned_section():
     assert a == b
     lines = a.splitlines()
     assert lines[0].startswith("# CATALOG v3")
-    assert lines[2].startswith("p001|Paracetamol|B|para,pcm|strip|piece|10|20.5|medicine")
+    assert lines[2].startswith("p001|Paracetamol|B|para,pcm|strip|20.5|medicine")
     assert '"kroshin dui patta" -> p002' in a
     assert "stock" not in a.lower()
 

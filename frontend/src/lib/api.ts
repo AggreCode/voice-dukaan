@@ -1,6 +1,6 @@
 import { auth } from './auth';
 import {
-  HealthOut, ProductIn, ProductOut, ProductUpdate, ShopOut, StockAdjustIn, StockCountIn, StockMovementOut,
+  HealthOut, ProductIn, ProductOut, ProductPatch, ShopOut, ShopType, StockAdjustIn, StockCountIn, StockMovementOut,
   TransactionIn, TransactionOut, VoiceMode, VoiceSessionOut,
   normalizeProduct, normalizeSession, normalizeStockMovement, normalizeTransaction,
 } from './types';
@@ -104,18 +104,15 @@ export const api = {
     list: async (q?: string, lowStock?: boolean) =>
       (await request<ProductOut[]>('/api/products', { query: { q, low_stock: lowStock ? 'true' : undefined } })).map(normalizeProduct),
     create: async (body: ProductIn) => normalizeProduct(await request<ProductOut>('/api/products', { method: 'POST', body })),
-    update: async (id: string, body: ProductUpdate) =>
+    update: async (id: string, body: ProductPatch) =>
       normalizeProduct(await request<ProductOut>(`/api/products/${id}`, { method: 'PATCH', body })),
-    /** Positive qty adds, negative removes. qty+unit is converted to base units by the server. */
+    /** Positive delta_qty adds, negative removes — in the product's own unit. */
     addStock: async (id: string, body: StockAdjustIn) =>
-      normalizeProduct(await request<ProductOut>(`/api/products/${id}/stock`, { method: 'POST', body })),
-    /** @deprecated use addStock with qty+unit */
-    adjustStock: async (id: string, body: { delta_qty: number; reason: string; note?: string }) =>
       normalizeProduct(await request<ProductOut>(`/api/products/${id}/stock`, { method: 'POST', body })),
     /** Set stock to a counted amount; the difference is recorded with reason "count". */
     countStock: async (id: string, body: StockCountIn) =>
       normalizeProduct(await request<ProductOut>(`/api/products/${id}/stock/count`, { method: 'POST', body })),
-    /** Stock movements, newest first. Quantities are in the product's sub_unit. */
+    /** Stock movements, newest first. Quantities are in the product's own unit. */
     ledger: async (id: string, limit = 50) =>
       (await request<StockMovementOut[]>(`/api/products/${id}/ledger`, { query: { limit } })).map(normalizeStockMovement),
     addAlias: async (id: string, alias: string, lang: string) =>
@@ -127,6 +124,12 @@ export const api = {
       fd.append('file', file, file.name);
       return request<{ created: number; updated: number }>('/api/products/import', { method: 'POST', body: fd });
     },
+  },
+
+  /** Static reference product-name list for autocomplete only — never the shop's actual inventory. */
+  glossary: {
+    search: (shopType: ShopType | string, q: string, limit = 20) =>
+      request<string[]>('/api/glossary', { query: { shop_type: shopType, q, limit } }),
   },
 
   voice: {

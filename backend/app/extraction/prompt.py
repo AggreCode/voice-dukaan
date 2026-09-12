@@ -16,8 +16,11 @@ STATIC_RULES = """You convert a shopkeeper's dictated bill into structured line 
   may write brand names in Odia/Devanagari script (ପାରାସିଟାମଲ, पैरासिटामोल), may merge or split words,
   and may write numbers as words or digits.
 - You are given the shop's CATALOG (next system block). Each line is one product:
-  id|name|brand|aliases|pack_unit|sub_unit|pack_size|price_inr|category
+  id|name|brand|aliases|unit|price_inr|category
   `aliases` are ways the product is commonly said, including learned corrections from this shop.
+  `unit` is the ONE unit this shop tracks that product in -- a wholesaler may track "carton", a
+  pharmacy "strip", a grocer "kg". There is no pack/sub-unit split and no conversion between units:
+  the shop's own unit is authoritative. Your job is to report the unit as spoken, not to convert it.
 - Chunks of speech are joined with the marker " | ". A marker is a pause; an item never spans a marker.
 
 ## Intent
@@ -39,17 +42,21 @@ darjan, dozen = 12 (as a unit) ; "dui darjan" = 2 dozen ; "tini sahe" = 300 ; "d
 "adha kilo" = 0.5 kg ; "paun kilo" / "pao" = 0.25 kg ; "sadhe tini" = 3.5 ; "sadhe char" = 4.5.
 Odia digits ୦୧୨୩୪୫୬୭୮୯ and Devanagari digits ०१२३४५६७८९ map to 0-9.
 
-## Unit words -> normalized unit
-gota, gote, nag, piece, pcs, pc, ta, tā, khanda (counter for flat/cut things), tablet, goli -> piece
-patta, patti, pata, strip, patta re -> strip
-packet, pakat, pouch, sachet, puda, pudia -> packet
-botal, bottle, sisi, shishi -> bottle
-dabba, dibba, box, baksa -> box
-peti, carton, case, karton -> carton
-kilo, kg, kilogram, kejee -> kg ; gram, g, gm -> g ; litre, liter, ltr, lita -> litre ; ml, mili -> ml
-darjan, dozen -> dozen ; bundle, gathi, bandal -> bundle
-If no unit is spoken: for medicines whose catalog pack_unit is strip, use strip if the number is small (<= 10)
-and piece if larger, and lower confidence to at most 0.7; for other goods use the catalog pack_unit.
+## Unit words -> a consistent spelling (do NOT convert quantities between units)
+Write the unit exactly as spoken, just normalised to one common spelling per word family:
+gota, gote, nag, pcs, pc, ta, tā, tablet, goli -> piece ; khanda -> piece
+patta, patti, pata, patta re -> strip
+pakat, pouch, sachet, puda, pudia -> packet
+botal, sisi, shishi -> bottle
+dabba, dibba, baksa -> box
+peti, case, karton -> carton
+kilo, kilogram, kejee -> kg ; gm -> g ; liter, ltr, lita -> litre ; mili -> ml
+darjan -> dozen ; gathi, bandal -> bundle
+- If no unit is spoken or typed for an item, use the unit already shown for that product in the
+  CATALOG and lower confidence to at most 0.7, reason "unit_assumed".
+- If the spoken unit clearly differs from the catalog unit for that product (e.g. the catalog says
+  "kg" but the shopkeeper said "box"), do NOT guess a conversion. Report the unit as spoken, set
+  `needs_review` true, reason "unit_mismatch_catalog" -- the shopkeeper decides what it means.
 
 ## Hard rules
 1. One item per spoken product mention. Never add an item that is not in the speech. Never merge two mentions.
@@ -63,15 +70,14 @@ and piece if larger, and lower confidence to at most 0.7; for other goods use th
 7. If the same product is spoken twice, output two items; the shopkeeper decides.
 8. The ENGLISH VIEW and SHADOW TRANSCRIPT (when present) are hints only. The PRIMARY TRANSCRIPT wins on
    conflict. If they disagree about which product was said, lower confidence and list alternatives.
-9. `unit_raw` is the unit word as spoken ("patta", "kilo"); empty string if none was spoken.
-10. `alternatives` lists other catalog ids that could plausibly be what was said, best first, never the
+9. `alternatives` lists other catalog ids that could plausibly be what was said, best first, never the
     chosen product_id itself, at most 3.
-11. `transcript_language`: "od", "hi", "en", or "mixed".
-12. If the transcript uses a general category word that several catalog products share ("biscuit",
+10. `transcript_language`: "od", "hi", "en", or "mixed".
+11. If the transcript uses a general category word that several catalog products share ("biscuit",
     "soap", "oil", "shampoo", "battery"), do not answer confidently. Pick the most likely product,
     set `needs_review` true with reason "ambiguous_category", and put the other candidates in
     `alternatives` so the shopkeeper can pick in one tap.
-13. `customer_name` only if a person's name is clearly spoken as the customer ("Ramesh babu nka pain").
+12. `customer_name` only if a person's name is clearly spoken as the customer ("Ramesh babu nka pain").
     `payment_mode`: cash | upi | credit ("udhar", "baki", "khata") | unknown; null if not mentioned.
 
 ## Confidence calibration

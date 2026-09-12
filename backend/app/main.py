@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import products, shops, transactions, voice
+from app.api import glossary, products, shops, transactions, voice
 from app.config import get_settings
 from app.db import get_engine
 
@@ -44,6 +44,7 @@ app = FastAPI(title="voice-dukan", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origins, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 app.include_router(shops.router)
+app.include_router(glossary.router)
 app.include_router(products.router)
 app.include_router(voice.router)
 app.include_router(transactions.router)

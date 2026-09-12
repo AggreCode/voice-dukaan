@@ -26,9 +26,8 @@ def test_alias_is_refused_when_it_shadows_another_product():
 
 
 def _p(code, name, brand, aliases, sold=0):
-    return CatalogProduct(id=uuid.uuid4(), code=code, name=name, brand=brand, category="general", pack_unit="packet",
-                          sub_unit="piece", pack_size=Decimal(1), sell_price=Decimal(10), stock_qty=Decimal(0),
-                          aliases=list(aliases), sold_count=sold)
+    return CatalogProduct(id=uuid.uuid4(), code=code, name=name, brand=brand, category="general", unit="packet",
+                          sell_price=Decimal(10), stock_qty=Decimal(0), aliases=list(aliases), sold_count=sold)
 
 
 def test_hints_use_spoken_words_not_category_names():
