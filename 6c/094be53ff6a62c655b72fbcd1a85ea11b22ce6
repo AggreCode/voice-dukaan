@@ -1,0 +1,25 @@
+backend/app/config.py
+  s_835aa8ce95b7ba::t_3ebc561e707091 70-77
+backend/app/services/locale.py
+  s_835aa8ce95b7ba::t_e33b75409cd6fd 5-6
+backend/app/tests/test_config_db_url.py
+  s_835aa8ce95b7ba::t_e259d8a83b372e 20-28
+backend/app/tests/test_locale_and_mode.py
+  s_835aa8ce95b7ba::t_83a3794d868d42 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6c094be53ff6a62c655b72fbcd1a85ea11b22ce6",
+  "prompts": {},
+  "sessions": {
+    "s_835aa8ce95b7ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_835aa8ce95b7ba",
+        "model": "unknown"
+      },
+      "human_author": "biswajit.mohanty@gupshup.io <biswajit.mohanty@gupshup.io>"
+    }
+  }
+}
