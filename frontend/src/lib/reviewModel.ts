@@ -62,14 +62,27 @@ export function nextKey(): string {
   return `ri-${Date.now()}-${keySeq}`;
 }
 
+/**
+ * Whether a price read off the input should be used, or the shop's own price should win.
+ *
+ * Buying: the wholesaler's bill carries the rate, and that rate is the whole reason for photographing
+ * it, so it wins. Selling: the shop sets the price, margin included, and it is not on the customer's
+ * paper list at all, so any number the reader found there is ignored in favour of the catalog price.
+ * A price the shopkeeper *speaks* always wins, whichever way round, because that is them deciding.
+ */
+export function usesCapturedPrice(session: VoiceSessionOut, kind: PriceKind): boolean {
+  return !(session.input_kind === 'image' && kind === 'sell');
+}
+
 export function buildReviewItems(session: VoiceSessionOut, kind: PriceKind = 'sell'): ReviewItem[] {
   const byCode = new Map<string, PickedProduct>();
   session.review_products.forEach((p) => byCode.set(p.code, toPicked(p)));
   const items = session.extraction?.items ?? [];
+  const takePrice = usesCapturedPrice(session, kind);
   return items.map((it, idx) => {
     const product = it.product_id ? byCode.get(it.product_id) ?? null : null;
     const unit = it.unit || product?.unit || 'piece';
-    const llmPrice = it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
+    const llmPrice = takePrice && it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
     const price = llmPrice ?? defaultUnitPrice(product, kind) ?? 0;
     return {
       key: nextKey(),

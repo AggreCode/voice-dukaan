@@ -29,3 +29,28 @@ def test_static_rules_cover_both_input_kinds_in_one_cached_block():
     # the rules a written list needs and speech does not
     for fragment in ("x2", "1/2", "ambiguous_product", "Three letters or fewer"):
         assert fragment in STATIC_RULES, fragment
+
+
+def test_column_headings_reach_the_prompt_so_a_rate_is_not_read_as_a_quantity():
+    ctx = ShopContext(shop_type="kirana", date_iso="2026-09-26", input_source="written",
+                      reader="gemini:vision", input_mode="stock_in",
+                      columns=["Product", "Qty", "Unit", "Rate"])
+    msg = build_user_message("Sugar | 2 | kg | 45", {}, ctx)
+    assert "COLUMNS (in this order" in msg
+    assert "Product | Qty | Unit | Rate" in msg
+    assert "STOCK IN" in msg
+
+
+def test_a_list_without_columns_says_nothing_about_them():
+    ctx = ShopContext(shop_type="kirana", date_iso="2026-09-26", input_source="written")
+    assert "COLUMNS" not in build_user_message("chini 2 kg", {}, ctx)
+
+
+def test_the_rules_read_a_rate_column_and_refuse_a_total_column():
+    # The bug this pins: an earlier rule refused any number without a currency mark, which is exactly
+    # how a rate column on a supplier bill is written, so every price was dropped.
+    assert "Read a price-per-unit column into `unit_price`" in STATIC_RULES
+    assert "NOT a unit price" in STATIC_RULES and "price_from_total" in STATIC_RULES
+    assert "SPOKEN or WRITTEN" in STATIC_RULES
+    # and the opposite case still holds: a bare number on a customer's list is a quantity
+    assert "bare trailing number there is a QUANTITY" in STATIC_RULES

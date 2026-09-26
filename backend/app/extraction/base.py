@@ -18,6 +18,7 @@ class ShopContext:
     input_source: str = "voice"  # voice (dictated) | written (read off a photographed list)
     reader: str = ""  # which image reader produced the text, when input_source is "written"
     unclear_lines: list[str] = field(default_factory=list)  # written lines the reader was unsure of
+    columns: list[str] = field(default_factory=list)  # table headings, when the list was a table
 
 
 @dataclass

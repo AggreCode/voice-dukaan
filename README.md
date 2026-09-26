@@ -11,6 +11,19 @@ Or the customer hands over a paper list, the shopkeeper photographs it, and the 
 comes back. Handwritten or printed, Odia, Hindi or English, and a word cut short ("ପାରା", "bisc") is
 matched against the shop's own inventory.
 
+The Scan tab asks one question first, **Selling** or **Buying**, and that is the only difference between
+the two:
+
+| | Selling to a customer | Buying from a wholesaler |
+|---|---|---|
+| Read from the photo | product, quantity, unit | product, quantity, unit **and rate** |
+| Price used | the shop's own selling price | the rate on the bill |
+| Why | the margin is the shopkeeper's, and a customer's list has no prices | the bill is the record of what was paid |
+
+A priced table is read as a table: the column headings come back with the rows, so a trailing number is
+known to be a rate and not a quantity. An `amount` or `total` column is never mistaken for a unit price.
+The review screen totals `quantity × price per unit` over every line.
+
 ## How it works
 
 Two ways in, one review screen. Both produce lines of text joined with `|`, and everything after that

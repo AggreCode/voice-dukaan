@@ -13,6 +13,8 @@ interface Props {
   lines?: string[];
   /** Lines the reader itself was unsure of, marked so the shopkeeper looks at them first. */
   unclearLines?: string[];
+  /** Table headings, shown above the rows so the shopkeeper can see which column was read as what. */
+  columns?: string[];
   /** Whatever was on the page that is not an item: a total, struck-out items, "no list here". */
   notes?: string;
 }
@@ -43,7 +45,7 @@ function findSpan(text: string, span: string): [number, number] | null {
 
 export default function TranscriptPanel({
   transcript, language, languageProbability, highlightSpan, defaultOpen = true,
-  title = 'Transcript', lines, unclearLines = [], notes = '',
+  title = 'Transcript', lines, unclearLines = [], columns = [], notes = '',
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const unclear = new Set(unclearLines.map((l) => l.trim()));
@@ -81,6 +83,14 @@ export default function TranscriptPanel({
       </button>
       {open && lines && lines.length > 0 && (
         <div className="border-t border-slate-100 px-4 py-3">
+          {columns.length > 0 && (
+            <p className="mb-2 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+              <span className="font-semibold uppercase tracking-wide">Columns</span>
+              {columns.map((c, i) => (
+                <span key={i} className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">{c}</span>
+              ))}
+            </p>
+          )}
           <ol className="space-y-1">
             {lines.map((line, i) => {
               const hl = !!highlightSpan && findSpan(line, highlightSpan) !== null;

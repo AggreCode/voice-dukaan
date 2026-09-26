@@ -186,3 +186,30 @@ async def test_an_extractor_failure_leaves_the_read_text_for_the_shopkeeper(shop
                                reader=StubReader(read), extractor=StubExtractor(None, error="schema_invalid"))
     assert vs.status == "needs_manual" and vs.error == "schema_invalid"
     assert vs.ocr_text == "chini 2 kg"  # the lines are still shown, so the bill can be typed from them
+
+
+async def test_a_priced_supplier_table_keeps_the_rate_and_the_columns(shop):
+    """The reported fault: a 4-column list parsed everything except price per unit."""
+    read = ReadResult("stub:reader", "stub", ["Sugar | 2 | kg | 45", "Paracetamol | 10 | strip | 18.5"],
+                      columns=["Product", "Qty", "Unit", "Rate"], raw={})
+    extractor = StubExtractor(_bill([
+        ExtractedItem(spoken_span="Sugar | 2 | kg | 45", product_id="p002", product_name_guess="Sugar",
+                      quantity=2, unit="kg", unit_price=45, alternatives=[], confidence=0.95,
+                      needs_review=False, reason=""),
+        ExtractedItem(spoken_span="Paracetamol | 10 | strip | 18.5", product_id="p001",
+                      product_name_guess="Paracetamol 500mg", quantity=10, unit="strip", unit_price=18.5,
+                      alternatives=[], confidence=0.93, needs_review=False, reason=""),
+    ], intent=Intent.purchase))
+    vs = _session_row(shop, mode="stock_in")
+    await process_image_session(StubSession(shop), vs, images=[ImageBlob(b"x", "image/jpeg")],
+                               reader=StubReader(read), extractor=extractor)
+
+    assert vs.status == "extracted"
+    assert vs.ocr_meta["columns"] == ["Product", "Qty", "Unit", "Rate"]
+    assert extractor.seen["ctx"].columns == ["Product", "Qty", "Unit", "Rate"]
+    items = vs.llm_output_json["items"]
+    # the guards must not strip a written price: the row itself is the evidence for it
+    assert [i["unit_price"] for i in items] == [45.0, 18.5]
+    assert all("price_without_evidence" not in (i["reason"] or "") for i in items)
+    # and the bill total the review screen shows is the sum of quantity x rate
+    assert sum(i["quantity"] * i["unit_price"] for i in items) == 2 * 45 + 10 * 18.5

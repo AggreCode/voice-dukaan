@@ -16,15 +16,19 @@ const STAGES: { at: number; label: string }[] = [
   { at: 9000, label: 'Matching your items…' },
 ];
 
-const COPY: Record<VoiceMode, { headline: string; sub: string; cta: string }> = {
+const COPY: Record<VoiceMode, { tab: string; headline: string; sub: string; reads: string; cta: string }> = {
   sale: {
+    tab: 'Selling',
     headline: 'Photograph the list',
     sub: "Point at your customer's paper list. Odia, Hindi or English, printed or handwritten.",
+    reads: 'Reads product, quantity and unit. Your own selling price is used.',
     cta: 'Read the list',
   },
   stock_in: {
+    tab: 'Buying',
     headline: 'Photograph the supplier bill',
-    sub: 'Point at the delivery challan or bill. Each line becomes stock coming in.',
+    sub: 'Point at the wholesaler bill or delivery challan. Each line becomes stock coming in.',
+    reads: 'Reads product, quantity, unit and rate. Columns and totals are handled.',
     cta: 'Read the bill',
   },
 };
@@ -37,8 +41,10 @@ export default function Scan() {
   const nav = useNavigate();
   const toast = useToast();
   const pending = usePendingCount();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mode: VoiceMode = parseMode(searchParams.get('mode')) ?? 'sale';
+  // Kept in the URL so the choice survives a reload, a share and the back button.
+  const setMode = (m: VoiceMode) => setSearchParams(m === 'sale' ? {} : { mode: m }, { replace: true });
 
   const [photos, setPhotos] = useState<PreparedPhoto[]>([]);
   const [selected, setSelected] = useState(0);
@@ -149,7 +155,7 @@ export default function Scan() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Voice Dukan'}</h1>
-          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Scan · stock in' : 'Scan a list'}</p>
+          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Scan · buying' : 'Scan · selling'}</p>
         </div>
         {pending > 0 && (
           <button
@@ -164,17 +170,30 @@ export default function Scan() {
         )}
       </header>
 
-      {mode === 'stock_in' && (
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary-dark">
-          <span className="font-semibold">Adding stock</span>
-          <button type="button" onClick={() => nav('/scan', { replace: true })} className="min-h-[44px] px-2 font-semibold underline">
-            Bill a sale instead
+      {/* One photo flow, two meanings. The shopkeeper says which before shooting, and nothing else
+          about the photo changes: buying reads the rate column, selling leaves pricing to them. */}
+      <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+        {(['sale', 'stock_in'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            aria-pressed={mode === m}
+            className={cx(
+              'min-h-[44px] rounded-lg text-sm font-semibold',
+              mode === m ? 'bg-white text-primary shadow' : 'text-slate-600',
+            )}
+          >
+            {COPY[m].tab}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
 
       <h2 className="mt-4 text-center text-xl font-bold text-slate-800">{copy.headline}</h2>
       <p className="mx-auto mt-1 max-w-[19rem] text-center text-sm text-slate-500">{copy.sub}</p>
+      <p className="mx-auto mt-2 max-w-[19rem] rounded-lg bg-white px-3 py-1.5 text-center text-[11px] font-medium text-slate-600 shadow-sm">
+        {copy.reads}
+      </p>
 
       {/* hidden pickers: one opens the camera, one the gallery */}
       <input
@@ -223,7 +242,7 @@ export default function Scan() {
             <GalleryIcon className="h-5 w-5" />
             Choose from gallery
           </button>
-          <Tips />
+          <Tips mode={mode} />
         </div>
       ) : (
         <div className="flex flex-1 flex-col py-4">
@@ -307,13 +326,18 @@ export default function Scan() {
   );
 }
 
-function Tips() {
+function Tips({ mode }: { mode: VoiceMode }) {
   return (
     <ul className="mt-5 w-full space-y-1.5 rounded-xl bg-white p-3 text-xs text-slate-600 shadow-sm">
       <li className="flex gap-2"><Dot />Lay the paper flat and fill the frame with it.</li>
       <li className="flex gap-2"><Dot />Keep your shadow off the page.</li>
+      {mode === 'stock_in' ? (
+        <li className="flex gap-2"><Dot />Get the whole table in, headings included, so the rate column is read.</li>
+      ) : (
+        <li className="flex gap-2"><Dot />Prices on the paper are ignored. You set them on the next screen.</li>
+      )}
       <li className="flex gap-2"><Dot />A long list can go across {MAX_PHOTOS} photos.</li>
-      <li className="flex gap-2"><Dot />No paper list? Speak it instead, on the Record tab.</li>
+      <li className="flex gap-2"><Dot />No paper list? Speak it instead, on the Speak tab.</li>
     </ul>
   );
 }

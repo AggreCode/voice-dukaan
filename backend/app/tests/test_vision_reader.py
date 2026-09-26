@@ -30,8 +30,10 @@ def _reply(payload: dict, *, finish: str = "STOP") -> dict:
     }
 
 
-def _ok_payload(lines: list[str], unclear: list[str] | None = None) -> dict:
-    return ScanRead(lines=lines, unclear_lines=unclear or [], script="odia", notes="").model_dump()
+def _ok_payload(lines: list[str], unclear: list[str] | None = None,
+                columns: list[str] | None = None) -> dict:
+    return ScanRead(lines=lines, columns=columns or [], unclear_lines=unclear or [], script="odia",
+                    notes="").model_dump()
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -62,7 +64,10 @@ async def test_images_are_sent_inline_with_the_prompt_last():
     assert "chini, sabun" in parts[2]["text"]
     assert "Never replace a written word" in parts[2]["text"]
     assert seen["body"]["generationConfig"]["temperature"] == 0.0
-    assert seen["body"]["generationConfig"]["responseJsonSchema"]["properties"]["lines"]
+    schema = seen["body"]["generationConfig"]["responseJsonSchema"]["properties"]
+    assert schema["lines"] and schema["columns"]
+    # a table must come back with its headings, or the next stage cannot tell a rate from a quantity
+    assert "columns" in parts[2]["text"] and "including every number in the row" in parts[2]["text"]
 
 
 async def test_blank_lines_are_dropped_and_unclear_lines_kept():
@@ -77,7 +82,8 @@ async def test_blank_lines_are_dropped_and_unclear_lines_kept():
 
 async def test_a_photo_with_no_list_reads_as_zero_lines_not_an_error():
     def handler(request: httpx.Request) -> httpx.Response:
-        payload = ScanRead(lines=[], unclear_lines=[], script="latin", notes="A photo of a shelf.").model_dump()
+        payload = ScanRead(lines=[], columns=[], unclear_lines=[], script="latin",
+                           notes="A photo of a shelf.").model_dump()
         return httpx.Response(200, json=_reply(payload))
 
     reader = GeminiVisionReader(api_key="k", client=_client(handler))
@@ -129,3 +135,16 @@ async def test_no_images_is_rejected_without_a_call():
 async def test_mock_reader_costs_nothing_and_says_so():
     result: ReadResult = await MockImageReader().read(_blobs(2), hints=[])
     assert result.ok and len(result.lines) == 2 and "MockImageReader" in result.notes
+
+
+async def test_a_priced_table_keeps_its_headings_and_every_number():
+    """A supplier bill is a table: the rate column is the whole point of photographing it."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_reply(_ok_payload(
+            ["Sugar | 2 | kg | 45", "Paracetamol | 10 | strip | 18.50"],
+            columns=["Product", "Qty", "Unit", "Rate"])))
+
+    reader = GeminiVisionReader(api_key="k", client=_client(handler))
+    result = await reader.read(_blobs(), hints=[])
+    assert result.columns == ["Product", "Qty", "Unit", "Rate"]
+    assert result.lines[0] == "Sugar | 2 | kg | 45"

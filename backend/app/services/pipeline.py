@@ -214,7 +214,8 @@ async def process_image_session(
         timer.mark("ocr_ms")
         vs.ocr_meta = {
             "reader": read.provider, "model": read.model, "script": read.script, "notes": read.notes,
-            "lines": read.lines, "unclear_lines": read.raw.get("unclear_lines") or [],
+            "lines": read.lines, "columns": read.columns,
+            "unclear_lines": read.raw.get("unclear_lines") or [],
             "latency_ms": read.latency_ms, "request_id": read.raw.get("request_id"),
             "usage": read.raw.get("usage"), "error": read.error,
         }
@@ -234,7 +235,7 @@ async def process_image_session(
             date_iso=date.today().isoformat(),
             detected_language=read.script, language_probability=None, stt_provider=read.provider,
             input_mode=vs.input_mode or "sale", input_source="written", reader=read.provider,
-            unclear_lines=list(read.raw.get("unclear_lines") or []),
+            unclear_lines=list(read.raw.get("unclear_lines") or []), columns=list(read.columns),
         )
         outcome: ExtractionOutcome = await extractor.extract(
             transcript=read.text, secondary_views={}, catalog=snap, shop_ctx=ctx)

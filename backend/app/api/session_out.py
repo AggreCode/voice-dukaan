@@ -44,6 +44,7 @@ async def session_out(session: AsyncSession, vs: VoiceSession) -> VoiceSessionOu
         low_language_confidence=bool(not written and prob is not None and prob < s.LOW_LANGUAGE_PROBABILITY),
         image_count=vs.image_count,
         ocr_lines=list(ocr.get("lines") or []),
+        ocr_columns=list(ocr.get("columns") or []),
         ocr_unclear_lines=list(ocr.get("unclear_lines") or []),
         ocr_notes=ocr.get("notes") or "",
         reader=ocr.get("reader"),

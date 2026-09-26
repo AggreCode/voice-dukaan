@@ -200,11 +200,20 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
       </header>
 
       {fromPhoto && (
-        <p className="mb-3 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-xs font-semibold text-primary-dark">
-          <PhotoIcon className="h-4 w-4" />
-          Read from {session.image_count ?? 1} photo{(session.image_count ?? 1) === 1 ? '' : 's'}
-          {session.ocr_unclear_lines.length > 0 && ` · ${session.ocr_unclear_lines.length} line(s) unclear`}
-        </p>
+        <div className="mb-3 rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary-dark">
+          <p className="flex items-center gap-2 font-semibold">
+            <PhotoIcon className="h-4 w-4" />
+            Read from {session.image_count ?? 1} photo{(session.image_count ?? 1) === 1 ? '' : 's'}
+            {session.ocr_unclear_lines.length > 0 && ` · ${session.ocr_unclear_lines.length} line(s) unclear`}
+          </p>
+          {/* Say plainly where each price came from, because it is the one number the photo does not
+              decide when selling: the shop's margin is the shopkeeper's, not the wholesaler's. */}
+          <p className="mt-0.5 pl-6 font-medium">
+            {intent === 'purchase'
+              ? 'Rates are taken from the photo. Edit any that were misread.'
+              : 'Your selling prices are used, not any number on the paper.'}
+          </p>
+        </div>
       )}
 
       {session.status === 'processing' && (
@@ -244,6 +253,7 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
         transcript={session.transcript}
         lines={fromPhoto ? session.ocr_lines : undefined}
         unclearLines={session.ocr_unclear_lines}
+        columns={fromPhoto ? session.ocr_columns : []}
         notes={fromPhoto ? session.ocr_notes : ''}
         language={session.transcript_language}
         languageProbability={session.language_probability}
@@ -354,7 +364,9 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
           )}
           <div className="mt-2 flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">Total · {items.length} item{items.length === 1 ? '' : 's'}</div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                {intent === 'purchase' ? 'Total cost' : 'Total'} · {items.length} item{items.length === 1 ? '' : 's'}
+              </div>
               <div className="text-2xl font-bold text-slate-900">{fmtMoney(total)}</div>
             </div>
             {confirmAnyway ? (

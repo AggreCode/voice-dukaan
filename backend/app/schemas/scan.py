@@ -10,7 +10,11 @@ class ScanRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lines: list[str]
-    """One entry per item on the paper, as written, in reading order."""
+    """One entry per item on the paper, as written, in reading order. For a table, one row per entry
+    with its columns separated by " | " in the order the headings run."""
+    columns: list[str]
+    """The column headings as written, in order, when the list is laid out as a table; empty otherwise.
+    This is what tells the next stage whether a trailing number is a quantity or a rate."""
     unclear_lines: list[str]
     """Entries from `lines` the reader is unsure about, so the review screen can flag them."""
     script: str

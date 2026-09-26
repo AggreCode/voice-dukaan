@@ -119,6 +119,7 @@ class VoiceSessionOut(BaseModel):
     # --- image capture only ---
     image_count: int | None = None
     ocr_lines: list[str] = []
+    ocr_columns: list[str] = []
     ocr_unclear_lines: list[str] = []
     ocr_notes: str = ""
     reader: str | None = None

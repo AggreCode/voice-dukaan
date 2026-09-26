@@ -21,6 +21,6 @@ class MockImageReader:
     async def read(self, images: list[ImageBlob], *, hints: list[str]) -> ReadResult:
         t0 = time.perf_counter()
         lines = self.lines if self.lines is not None else [f"unread photo {i + 1}" for i in range(len(images))]
-        return ReadResult(self.name, self.model, list(lines), script="latin",
+        return ReadResult(self.name, self.model, list(lines), columns=[], script="latin",
                           notes="Produced by MockImageReader (OCR_MODE=mock) -- no model was called.",
                           latency_ms=int((time.perf_counter() - t0) * 1000), raw={"images": len(images)})

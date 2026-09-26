@@ -18,6 +18,8 @@ READER_RULES = """You read a photograph of a shopping list and report the lines 
 
 ## What to return
 - `lines`: one entry per item on the list, top to bottom, in reading order.
+- `columns`: when the list is laid out as a TABLE, its column headings as written, in order, for
+  example ["Product", "Qty", "Unit", "Rate"]. Empty when the list is just items on lines.
 - Copy each item as written. Keep the original script. Do NOT translate, do NOT expand
   abbreviations, do NOT correct spelling, and do NOT rename anything to a product you know.
 - Keep the quantity on the same line as its item, in the order written. A quantity written in a
@@ -28,8 +30,18 @@ READER_RULES = """You read a photograph of a shopping list and report the lines 
 - A repetition mark such as "x2" or "×2" stays on the line as written.
 - Crossed-out or struck-through items are ALREADY BOUGHT or cancelled: leave them out of `lines`
   and say so in `notes`.
-- Skip anything that is not an item: headings, dates, a name, a phone number, a shop stamp, a
-  running total, a signature. Put a total in `notes` if one is written.
+- Skip anything that is not an item: the header row itself, dates, a name, a phone number, a shop
+  stamp, a grand-total row, a signature. Put a written total in `notes`.
+
+## Tables (a supplier bill, a delivery challan, a priced list)
+- These usually have columns such as Product | Qty | Unit | Rate | Amount, sometimes written in Odia
+  or Hindi (ଦର, दर, "rate", "dam", "MRP"). Report the headings in `columns`.
+- Report each row as ONE entry in `lines`, with its cells separated by " | " in the same order as
+  `columns`, for example "Sugar | 2 | kg | 45". Keep an empty cell empty: "Sugar |  | kg | 45".
+- Copy every number in the row, including the rate and the amount. Do not do the arithmetic yourself
+  and do not drop a column because it looks redundant: the next stage decides what each number means,
+  and it can only do that if you report all of them.
+- A column of ditto marks (", -do-, ") repeats the cell above it, so write that value out.
 - A partly hidden or unreadable word is still reported, with the letters you can actually see, so
   the next stage can match it against the shop's catalog. Never invent letters to complete a word.
   Add the item to `unclear_lines` as well when you are unsure of it.
@@ -50,6 +62,8 @@ def build_reader_message(*, hints: list[str], image_count: int) -> str:
     in the next stage, against the full catalog."""
     lines = [
         f"{image_count} photo(s) of one list." if image_count > 1 else "One photo of a list.",
+        "If it is a table, report its headings in `columns` and each row's cells in one line, "
+        "separated by \" | \", including every number in the row.",
     ]
     if hints:
         lines += [

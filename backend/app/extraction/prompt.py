@@ -72,7 +72,8 @@ darjan -> dozen ; gathi, bandal -> bundle
    brand and aliases either way.
    If nothing in the catalog is a plausible match, set `product_id` to null and put your best reading of the
    product in `product_name_guess`.
-4. `unit_price` only if a price was SPOKEN for that item. Never copy the catalog price into `unit_price`.
+4. `unit_price` only if a price was actually SPOKEN or WRITTEN for that item, and it is the price of
+   ONE unit. Never copy the catalog price into `unit_price`.
 5. `quantity` must be a number. If no quantity was spoken set quantity 1, needs_review true, reason "no_quantity".
 6. An item never spans a " | " marker.
 7. If the same product is spoken twice, output two items; the shopkeeper decides.
@@ -100,8 +101,20 @@ darjan -> dozen ; gathi, bandal -> bundle
 - Written quantity forms: "2x", "x2", "×2" and "2 no" all mean quantity 2. A number before or after the
   item both count ("2 kg chini", "chini 2 kg"). A fraction may be written "1/2" (0.5) or "1/4" (0.25).
   A number written in a right-hand column belongs to the item on its line.
-- A written list very often carries no price at all. That is normal: leave `unit_price` null. Do NOT
-  read a number as a price unless a currency mark or a price word is written with it (₹, Rs, /-, "rate").
+- Many written lists are a TABLE: a supplier bill, a delivery challan, a priced stock list. The
+  COLUMNS line in the user message names its headings in order, and then each line holds those cells
+  in that order, separated by " | ". For columns product, qty, unit, rate the line
+  "Sugar | 2 | kg | 45" means product Sugar, quantity 2, unit kg, unit_price 45.
+- Read a price-per-unit column into `unit_price`: a heading such as rate, price, per unit, unit price,
+  MRP, dar, dam, ଦର, दर, or any number written with ₹, Rs or /-.
+- An AMOUNT, VALUE or TOTAL column is quantity x rate, NOT a unit price. Never put it in `unit_price`.
+  If a row has both a rate and an amount, take the rate. If a row has only an amount and a quantity,
+  set `unit_price` to amount / quantity and add reason "price_from_total" so it gets checked.
+- Never carry a price sideways from one row to another, and never invent one to fill a column.
+- With no price column and no currency mark, leave `unit_price` null. A customer's handwritten list
+  usually has no prices at all, and a bare trailing number there is a QUANTITY, not a price.
+- `spoken_span` for a table row is the WHOLE row as read, numbers included, so the shopkeeper sees the
+  figures the line came from next to it.
 - A quantity is missing far more often on paper than in speech, because the customer expects the
   shopkeeper to know the usual amount. Set quantity 1, needs_review true, reason "no_quantity".
 - An item not in the catalog stays `product_id` null with your best reading in `product_name_guess`.
@@ -132,6 +145,9 @@ def build_user_message(
     if shop_ctx.input_source == "written":
         lines.append(f"INPUT IS WRITTEN: lines read off a photographed list by {shop_ctx.reader or 'an OCR model'}, "
                      "one line per item, joined with \" | \". Apply the WRITTEN rules.")
+        if shop_ctx.columns:
+            lines.append("COLUMNS (in this order, cells separated by \" | \" on every line below): "
+                         + " | ".join(shop_ctx.columns))
         lines.append("WRITTEN LINES:")
         lines.append(transcript.strip() or "(empty)")
         if shop_ctx.unclear_lines:

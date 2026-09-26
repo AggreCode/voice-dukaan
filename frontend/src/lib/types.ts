@@ -127,6 +127,8 @@ export interface VoiceSessionOut {
   /** Scans only. */
   image_count: number | null;
   ocr_lines: string[];
+  /** Column headings when the photographed list was a table, in order. Empty otherwise. */
+  ocr_columns: string[];
   ocr_unclear_lines: string[];
   ocr_notes: string;
   reader: string | null;
@@ -285,6 +287,7 @@ export function normalizeSession(s: VoiceSessionOut): VoiceSessionOut {
     mode: s.mode === 'stock_in' ? 'stock_in' : 'sale',
     input_kind: s.input_kind === 'image' ? 'image' : 'voice',
     ocr_lines: s.ocr_lines || [],
+    ocr_columns: s.ocr_columns || [],
     ocr_unclear_lines: s.ocr_unclear_lines || [],
     ocr_notes: s.ocr_notes || '',
     reader: s.reader ?? null,

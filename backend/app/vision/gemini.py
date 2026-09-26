@@ -117,9 +117,11 @@ class GeminiVisionReader:  # structurally an ImageReader, like the STT providers
             return fail(f"schema_invalid: {str(e)[:200]}", **raw)
         lines = [ln.strip() for ln in read.lines if ln.strip()]
         log.info("gemini_scan", request_id=request_id, images=len(images), lines=len(lines),
+                 columns=len(read.columns),
                  latency_ms=elapsed(), **{k: v for k, v in usage.items() if v is not None})
         return ReadResult(
             self.name, data.get("modelVersion") or self.model, lines,
+            columns=[c.strip() for c in read.columns if c.strip()],
             script=read.script or None, notes=read.notes, latency_ms=elapsed(),
             raw=raw | {"unclear_lines": read.unclear_lines},
         )
