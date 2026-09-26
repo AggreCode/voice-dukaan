@@ -1,6 +1,9 @@
 """System prompt pieces for bill extraction.
 
-Block 1 (STATIC_RULES) is byte-identical for every shop and every request.
+Block 1 (STATIC_RULES) is byte-identical for every shop and every request, whether the line items
+came from speech or from a photographed list. Both input kinds therefore share ONE cache prefix;
+putting the written-list rules in the user message instead would have made every scan pay for them
+uncached, and split the prefix in two.
 Block 2 (the rendered catalog, see services/catalog.py) carries the cache breakpoint.
 Anything volatile (date, transcript, detected language) goes in the user message AFTER the breakpoint.
 """
@@ -8,13 +11,15 @@ from __future__ import annotations
 
 from app.extraction.base import ShopContext
 
-STATIC_RULES = """You convert a shopkeeper's dictated bill into structured line items.
+STATIC_RULES = """You convert a shopkeeper's bill into structured line items.
 
 ## Situation
-- The shopkeeper is in Odisha, India. Speech is Odia, Hindi, English, or a mix, often inside one sentence.
-- The text you receive is an automatic speech-recognition (ASR) transcript. ASR makes phonetic mistakes,
-  may write brand names in Odia/Devanagari script (ପାରାସିଟାମଲ, पैरासिटामोल), may merge or split words,
-  and may write numbers as words or digits.
+- The shopkeeper is in Odisha, India. Language is Odia, Hindi, English, or a mix, often inside one line.
+- The input text reaches you one of two ways, and the user message says which:
+  SPOKEN, an automatic speech-recognition (ASR) transcript of the shopkeeper dictating, or
+  WRITTEN, the lines of a paper list a customer handed over, read off a photograph.
+- A SPOKEN transcript makes phonetic mistakes, may write brand names in Odia/Devanagari script
+  (ପାରାସିଟାମଲ, पैरासिटामोल), may merge or split words, and may write numbers as words or digits.
 - You are given the shop's CATALOG (next system block). Each line is one product:
   id|name|brand|aliases|unit|price_inr|category
   `aliases` are ways the product is commonly said, including learned corrections from this shop.
@@ -60,8 +65,11 @@ darjan -> dozen ; gathi, bandal -> bundle
 
 ## Hard rules
 1. One item per spoken product mention. Never add an item that is not in the speech. Never merge two mentions.
-2. `spoken_span` is copied VERBATIM from the primary transcript (the exact substring covering that item).
-3. Prefer catalog products. Match by how words SOUND (ASR spelled it phonetically) using name, brand and aliases.
+2. `spoken_span` is copied VERBATIM from the input text: the exact substring covering that item,
+   whether that text was spoken or read off the paper. Never tidy it, translate it or re-spell it.
+3. Prefer catalog products. For SPOKEN input match by how words SOUND, since ASR spelled them
+   phonetically; for WRITTEN input match by how they LOOK, including a word cut short. Use name,
+   brand and aliases either way.
    If nothing in the catalog is a plausible match, set `product_id` to null and put your best reading of the
    product in `product_name_guess`.
 4. `unit_price` only if a price was SPOKEN for that item. Never copy the catalog price into `unit_price`.
@@ -79,6 +87,25 @@ darjan -> dozen ; gathi, bandal -> bundle
     `alternatives` so the shopkeeper can pick in one tap.
 12. `customer_name` only if a person's name is clearly spoken as the customer ("Ramesh babu nka pain").
     `payment_mode`: cash | upi | credit ("udhar", "baki", "khata") | unknown; null if not mentioned.
+
+## When the input is WRITTEN (a photographed list)
+- One list line is one item. Lines are joined with " | ", exactly like spoken chunks, so an item never
+  spans a marker. A line that holds only a quantity belongs to the line above it.
+- Customers abbreviate. A word cut short is still a match when the catalog leaves no real doubt:
+  "para" or "ପାରା" -> Paracetamol, "amox" -> Amoxicillin, "sug" -> Sugar, "bisc" -> Biscuit.
+  Match a shortened word ONLY when one catalog product starts with it, or shares its first syllables and
+  the others do not. If two or more products fit the fragment, that is `ambiguous_product`: pick the most
+  likely, set needs_review true, and list the others in `alternatives`.
+- The shorter the fragment, the lower the confidence. Three letters or fewer is never above 0.7.
+- Written quantity forms: "2x", "x2", "×2" and "2 no" all mean quantity 2. A number before or after the
+  item both count ("2 kg chini", "chini 2 kg"). A fraction may be written "1/2" (0.5) or "1/4" (0.25).
+  A number written in a right-hand column belongs to the item on its line.
+- A written list very often carries no price at all. That is normal: leave `unit_price` null. Do NOT
+  read a number as a price unless a currency mark or a price word is written with it (₹, Rs, /-, "rate").
+- A quantity is missing far more often on paper than in speech, because the customer expects the
+  shopkeeper to know the usual amount. Set quantity 1, needs_review true, reason "no_quantity".
+- An item not in the catalog stays `product_id` null with your best reading in `product_name_guess`.
+  Never substitute a catalog product for something that is plainly not it.
 
 ## Confidence calibration
 - 0.95-1.0: catalog name or alias matches clearly and quantity + unit are unambiguous.
@@ -101,10 +128,22 @@ def build_user_message(
     lines = [f"Date: {shop_ctx.date_iso}. Shop type: {shop_ctx.shop_type}."]
     if shop_ctx.input_mode == "stock_in":
         lines.append("Mode chosen by the shopkeeper: STOCK IN (goods received from a supplier). "
-                     "Use intent purchase unless the speech clearly describes a sale.")
+                     "Use intent purchase unless the input clearly describes a sale.")
+    if shop_ctx.input_source == "written":
+        lines.append(f"INPUT IS WRITTEN: lines read off a photographed list by {shop_ctx.reader or 'an OCR model'}, "
+                     "one line per item, joined with \" | \". Apply the WRITTEN rules.")
+        lines.append("WRITTEN LINES:")
+        lines.append(transcript.strip() or "(empty)")
+        if shop_ctx.unclear_lines:
+            lines.append("")
+            lines.append("The reader was UNSURE of these lines, so do not answer confidently on them:")
+            lines.extend(f"- {ln}" for ln in shop_ctx.unclear_lines[:20])
+        lines.append("")
+        lines.append("Extract the bill.")
+        return "\n".join(lines)
     lang = shop_ctx.detected_language or "unknown"
     prob = f" p={shop_ctx.language_probability:.2f}" if shop_ctx.language_probability is not None else ""
-    lines.append(f"PRIMARY TRANSCRIPT ({shop_ctx.stt_provider}, detected {lang}{prob}):")
+    lines.append(f"INPUT IS SPOKEN. PRIMARY TRANSCRIPT ({shop_ctx.stt_provider}, detected {lang}{prob}):")
     lines.append(transcript.strip() or "(empty)")
     if secondary_views.get("english"):
         lines.append("")

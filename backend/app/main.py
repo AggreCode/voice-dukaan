@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import glossary, products, shops, transactions, voice
+from app.api import glossary, products, scan, shops, transactions, voice
 from app.config import get_settings
 from app.db import get_engine
 
@@ -47,6 +47,7 @@ app.include_router(shops.router)
 app.include_router(glossary.router)
 app.include_router(products.router)
 app.include_router(voice.router)
+app.include_router(scan.router)
 app.include_router(transactions.router)
 
 
@@ -87,6 +88,9 @@ async def health():
         "anthropic_configured": bool(s.ANTHROPIC_API_KEY),
         "gemini_configured": bool(s.GEMINI_API_KEY),
         "extractor_mode": s.EXTRACTOR_MODE,
+        "ocr_mode": s.OCR_MODE,
+        "ocr_model": s.GEMINI_VISION_MODEL if s.OCR_MODE == "gemini" else "none",
+        "app_secret_set": bool(s.APP_SECRET),
         "extractor_model": {"gemini": s.GEMINI_MODEL, "claude": s.CLAUDE_MODEL, "mock": "none"}[s.EXTRACTOR_MODE],
         "google_shadow": s.GOOGLE_SHADOW_ENABLED,
         "claude_model": s.CLAUDE_MODEL,

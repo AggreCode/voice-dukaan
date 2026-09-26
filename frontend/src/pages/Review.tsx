@@ -181,14 +181,31 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
     save.mutate();
   };
 
-  const bad = session.status === 'no_speech' || session.status === 'failed' || session.status === 'needs_manual';
+  const bad = session.status === 'no_speech' || session.status === 'no_text' || session.status === 'failed' ||
+    session.status === 'needs_manual';
+  const fromPhoto = session.input_kind === 'image';
+  // "Capture again" goes back the way this bill came in, keeping the sale/stock-in mode.
+  const againTo = fromPhoto
+    ? isStockIn ? '/scan?mode=stock_in' : '/scan'
+    : isStockIn ? '/?mode=stock_in' : '/';
+  const againLabel = fromPhoto ? 'Photograph again' : 'Record again';
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-56 pt-4">
       <header className="mb-3 flex items-center justify-between">
         <h1 className="text-lg font-bold text-primary-dark">{intent === 'purchase' ? 'Review stock in' : 'Review bill'}</h1>
-        <Link to={isStockIn ? '/?mode=stock_in' : '/'} className="min-h-[44px] rounded-lg px-2 py-2 text-sm font-medium text-primary">← Record</Link>
+        <Link to={againTo} className="min-h-[44px] rounded-lg px-2 py-2 text-sm font-medium text-primary">
+          ← {fromPhoto ? 'Scan' : 'Speak'}
+        </Link>
       </header>
+
+      {fromPhoto && (
+        <p className="mb-3 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-xs font-semibold text-primary-dark">
+          <PhotoIcon className="h-4 w-4" />
+          Read from {session.image_count ?? 1} photo{(session.image_count ?? 1) === 1 ? '' : 's'}
+          {session.ocr_unclear_lines.length > 0 && ` · ${session.ocr_unclear_lines.length} line(s) unclear`}
+        </p>
+      )}
 
       {session.status === 'processing' && (
         <div className="mb-3 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">Still processing… refreshing.</div>
@@ -200,12 +217,18 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
         <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-semibold">
             {session.status === 'no_speech' && 'No speech detected'}
-            {session.status === 'failed' && 'Processing failed'}
+            {session.status === 'no_text' && 'No list found in the photo'}
+            {session.status === 'failed' && (fromPhoto ? 'Could not read the photo' : 'Processing failed')}
             {session.status === 'needs_manual' && 'Could not understand. Please fill in manually.'}
           </p>
+          {session.status === 'no_text' && (
+            <p className="mt-1 text-xs">
+              Hold the phone straight over the paper, fill the frame with it, and keep your shadow off the page.
+            </p>
+          )}
           {session.error && <p className="mt-1 break-words text-xs">{session.error}</p>}
-          <Link to={isStockIn ? '/?mode=stock_in' : '/'} className="mt-2 flex min-h-[44px] items-center justify-center rounded-lg bg-primary font-semibold text-white">
-            Record again
+          <Link to={againTo} className="mt-2 flex min-h-[44px] items-center justify-center rounded-lg bg-primary font-semibold text-white">
+            {againLabel}
           </Link>
         </div>
       )}
@@ -217,7 +240,11 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
       )}
 
       <TranscriptPanel
+        title={fromPhoto ? 'What the photo said' : 'Transcript'}
         transcript={session.transcript}
+        lines={fromPhoto ? session.ocr_lines : undefined}
+        unclearLines={session.ocr_unclear_lines}
+        notes={fromPhoto ? session.ocr_notes : ''}
         language={session.transcript_language}
         languageProbability={session.language_probability}
         highlightSpan={activeItem?.original?.spoken_span ?? null}
@@ -236,7 +263,9 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
         ))}
       </div>
       {intentHint && (
-        <p className="mt-1 text-xs text-amber-700">Heard as “{ext?.intent}” — defaulted to Sale. Change if this is a purchase.</p>
+        <p className="mt-1 text-xs text-amber-700">
+          {fromPhoto ? 'Read' : 'Heard'} as “{ext?.intent}” — defaulted to Sale. Change if this is a purchase.
+        </p>
       )}
 
       <ul className="mt-3 space-y-2">
@@ -250,6 +279,7 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
             onDelete={() => deleteItem(it)}
             onPickProduct={() => setPickerFor(it.key)}
             priceKind={priceKind}
+            source={fromPhoto ? 'image' : 'voice'}
           />
         ))}
       </ul>
@@ -365,5 +395,15 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
         initialQuery={pickerItem && !pickerItem.product ? pickerItem.original?.product_name_guess ?? '' : ''}
       />
     </div>
+  );
+}
+
+function PhotoIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9" r="1.5" />
+      <path d="M21 16l-5-5-4.5 5-2-2L3 19" />
+    </svg>
   );
 }

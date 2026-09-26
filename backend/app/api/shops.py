@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_shop, hash_pin, make_token
+from app.api.deps import current_shop, hash_pin, hash_pin_legacy, make_token
 from app.db import get_session
 from app.models import Shop, User
 from app.schemas.api import ShopIn, ShopOut
@@ -45,8 +45,14 @@ async def login(body: LoginIn, session: AsyncSession = Depends(get_session)):
     if shop is None:
         raise HTTPException(404, "shop not found")
     user = (await session.execute(select(User).where(User.shop_id == shop.id))).scalars().first()
-    if user is None or user.pin_hash != hash_pin(body.pin):
+    if user is None:
         raise HTTPException(401, "wrong pin")
+    if user.pin_hash != hash_pin(body.pin):
+        # PIN saved before APP_SECRET existed: accept it once, then store it under the new secret.
+        if user.pin_hash != hash_pin_legacy(body.pin):
+            raise HTTPException(401, "wrong pin")
+        user.pin_hash = hash_pin(body.pin)
+        await session.commit()
     return LoginOut(token=make_token(shop.id, user.id), shop=ShopOut.model_validate(shop, from_attributes=True))
 
 

@@ -103,15 +103,26 @@ class ReviewProduct(BaseModel):
 
 
 class VoiceSessionOut(BaseModel):
+    """One capture: a dictated bill or a photographed list. `input_kind` says which, and `transcript`
+    carries whichever text was produced, so the review screen has a single shape to render."""
+
     session_id: uuid.UUID
     client_session_id: str
-    status: str
-    mode: str = "sale"
+    status: str  # processing|extracted|no_speech|no_text|saved|failed|needs_manual
+    mode: str = "sale"  # sale | stock_in
+    input_kind: str = "voice"  # voice | image
     transcript: str | None = None
     secondary_views: dict[str, str] = {}
     transcript_language: str | None = None
     language_probability: float | None = None
     low_language_confidence: bool = False
+    # --- image capture only ---
+    image_count: int | None = None
+    ocr_lines: list[str] = []
+    ocr_unclear_lines: list[str] = []
+    ocr_notes: str = ""
+    reader: str | None = None
+
     extraction: BillExtraction | None = None
     review_products: list[ReviewProduct] = []
     latencies: dict[str, int] = {}

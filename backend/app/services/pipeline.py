@@ -1,5 +1,12 @@
-"""Orchestration: raw upload -> normalize -> VAD chunks -> STT (primary + shadow in parallel)
--> transcript assembly -> Claude extraction -> guards -> persisted VoiceSession."""
+"""Orchestration for both capture kinds, ending in the same persisted session row.
+
+  voice: raw upload -> normalize -> VAD chunks -> STT (primary + shadow in parallel)
+         -> transcript assembly -> extraction -> guards
+  image: photos in memory -> image reader -> lines joined with " | " -> extraction -> guards
+
+Everything after the text exists is shared, which is the point: one review screen, one set of guards,
+one corrections and alias-learning path.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -18,9 +25,11 @@ from app.extraction.base import ExtractionOutcome, Extractor, ShopContext
 from app.extraction.postprocess import apply_guards
 from app.models import Shop, VoiceSession
 from app.services import catalog as catalog_svc
+from app.services.fuzzy import fill_unresolved
 from app.services.shadow import run_shadow
 from app.stt.base import STTResult
 from app.stt.sarvam import SarvamSaarasProvider
+from app.vision.base import ImageBlob, ImageReader
 
 log = structlog.get_logger(__name__)
 
@@ -178,6 +187,76 @@ async def process_session(
         vs.error = f"normalize: {e}"
     except Exception as e:  # noqa: BLE001
         log.exception("pipeline_failed", session_id=str(vs.id))
+        vs.status = "failed"
+        vs.error = str(e)[:500]
+    finally:
+        vs.latencies = timer.marks | {"total_ms": timer.total()}
+    return vs
+
+
+async def process_image_session(
+    session: AsyncSession,
+    vs: VoiceSession,
+    *,
+    images: list[ImageBlob],
+    reader: ImageReader,
+    extractor: Extractor,
+) -> VoiceSession:
+    """Read a photographed list and extract it. The photos stay in memory: nothing is written to disk,
+    so a customer's handwritten list leaves no copy behind once this returns."""
+    s = get_settings()
+    timer = _Timer()
+    try:
+        shop = await session.get(Shop, vs.shop_id)
+        snap = await catalog_svc.load_snapshot(session, vs.shop_id)
+
+        read = await reader.read(images, hints=snap.hints)
+        timer.mark("ocr_ms")
+        vs.ocr_meta = {
+            "reader": read.provider, "model": read.model, "script": read.script, "notes": read.notes,
+            "lines": read.lines, "unclear_lines": read.raw.get("unclear_lines") or [],
+            "latency_ms": read.latency_ms, "request_id": read.raw.get("request_id"),
+            "usage": read.raw.get("usage"), "error": read.error,
+        }
+        if not read.ok:
+            vs.status, vs.error = "failed", f"read: {read.error}"
+            return vs
+        vs.ocr_text = read.text
+        if not read.lines:
+            # A photo with no list in it. Distinct from a failure: the shopkeeper just points the
+            # camera again, and the reader's own words explain what it saw.
+            vs.status = "no_text"
+            vs.error = read.notes or "no list found in the photo"
+            return vs
+
+        ctx = ShopContext(
+            shop_type=shop.type if shop else "general",
+            date_iso=date.today().isoformat(),
+            detected_language=read.script, language_probability=None, stt_provider=read.provider,
+            input_mode=vs.input_mode or "sale", input_source="written", reader=read.provider,
+            unclear_lines=list(read.raw.get("unclear_lines") or []),
+        )
+        outcome: ExtractionOutcome = await extractor.extract(
+            transcript=read.text, secondary_views={}, catalog=snap, shop_ctx=ctx)
+        timer.mark("llm_ms")
+        vs.llm_request_id = outcome.request_id
+        vs.llm_model = outcome.model
+        vs.token_usage = outcome.usage
+        if outcome.output is None:
+            vs.status = "needs_manual"
+            vs.error = outcome.error
+        else:
+            guarded = apply_guards(outcome.output, transcript=read.text, catalog=snap,
+                                   confidence_floor=s.REVIEW_CONFIDENCE_FLOOR)
+            if s.FUZZY_FILL:
+                # Written input only for now. Speech would benefit too, but it needs its own eval run
+                # before a phonetic fallback is allowed near the voice path's measured accuracy.
+                guarded = fill_unresolved(guarded, snap, min_score=s.FUZZY_MIN_SCORE,
+                                          min_gap=s.FUZZY_MIN_GAP)
+            vs.llm_output_json = guarded.model_dump(mode="json")
+            vs.status = "extracted"
+    except Exception as e:  # noqa: BLE001
+        log.exception("scan_pipeline_failed", session_id=str(vs.id))
         vs.status = "failed"
         vs.error = str(e)[:500]
     finally:

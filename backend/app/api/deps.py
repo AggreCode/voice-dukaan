@@ -18,20 +18,52 @@ TOKEN_TTL_S = 30 * 24 * 3600
 
 
 def _secret() -> bytes:
+    """Signing key for login tokens and PIN hashes.
+
+    APP_SECRET is authoritative. When it is unset we fall back to the historical derivation from the
+    AI keys, which is why tokens used to die the moment a key was added or rotated -- see APP_SECRET
+    in config.py. New deployments must set APP_SECRET.
+    """
+    s = get_settings()
+    if s.APP_SECRET:
+        return hashlib.sha256(("voice-dukan:" + s.APP_SECRET).encode()).digest()
+    return _legacy_secret()
+
+
+def _legacy_secret() -> bytes:
+    """The pre-APP_SECRET derivation, kept only to re-hash PINs saved under it on first login."""
     s = get_settings()
     return hashlib.sha256((s.ANTHROPIC_API_KEY + s.SARVAM_API_KEY + "voice-dukan").encode()).digest()
 
 
+def _b64e(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _b64d(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
 def make_token(shop_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    """payload.signature, each base64url on its own.
+
+    The separator must sit OUTSIDE the encoded parts. The previous format base64-encoded
+    `payload + b"." + signature` as one blob, so when the signature happened to contain the byte 0x2e
+    -- about 11% of tokens, since any of its 32 bytes will do -- parsing split in the middle of the
+    signature and rejected a perfectly valid token. That is a second, independent cause of the
+    "invalid or expired token" screen, and it survived every retry because the token never changed.
+    """
     payload = json.dumps({"s": str(shop_id), "u": str(user_id), "exp": int(time.time()) + TOKEN_TTL_S}).encode()
     sig = hmac.new(_secret(), payload, hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(payload + b"." + sig).decode()
+    return f"{_b64e(payload)}.{_b64e(sig)}"
 
 
 def parse_token(token: str) -> dict | None:
     try:
-        raw = base64.urlsafe_b64decode(token.encode())
-        payload, sig = raw.rsplit(b".", 1)
+        payload_b64, sep, sig_b64 = token.partition(".")
+        if not sep:
+            return None  # includes every token in the old single-blob format
+        payload, sig = _b64d(payload_b64), _b64d(sig_b64)
         if not hmac.compare_digest(hmac.new(_secret(), payload, hashlib.sha256).digest(), sig):
             return None
         data = json.loads(payload)
@@ -44,6 +76,12 @@ def parse_token(token: str) -> dict | None:
 
 def hash_pin(pin: str) -> str:
     return hashlib.sha256(hmac.new(_secret(), pin.encode(), hashlib.sha256).digest()).hexdigest()
+
+
+def hash_pin_legacy(pin: str) -> str:
+    """Same PIN under the old AI-key-derived secret, so a shop that set a PIN before APP_SECRET
+    existed can still log in once and have its hash upgraded."""
+    return hashlib.sha256(hmac.new(_legacy_secret(), pin.encode(), hashlib.sha256).digest()).hexdigest()
 
 
 async def current_shop(

@@ -13,9 +13,15 @@ export interface HealthOut {
   db: boolean;
   sarvam_configured: boolean;
   anthropic_configured: boolean;
+  gemini_configured: boolean;
   google_shadow: boolean;
   claude_model: string;
   sarvam_model: string;
+  extractor_mode: string;
+  extractor_model: string;
+  ocr_mode: string;
+  ocr_model: string;
+  app_secret_set: boolean;
 }
 
 export interface ProductOut {
@@ -58,7 +64,18 @@ export type ProductUpdate = ProductPatch;
 
 export type VoiceMode = 'sale' | 'stock_in';
 
-export type SessionStatus = 'processing' | 'extracted' | 'no_speech' | 'saved' | 'failed' | 'needs_manual';
+/** How a bill was captured: dictated, or photographed off a paper list. */
+export type InputKind = 'voice' | 'image';
+
+export type SessionStatus =
+  | 'processing'
+  | 'extracted'
+  | 'no_speech'
+  /** A photo with no list in it (a shelf, a face, an unreadable page). */
+  | 'no_text'
+  | 'saved'
+  | 'failed'
+  | 'needs_manual';
 
 export interface ExtractedItem {
   spoken_span: string;
@@ -100,11 +117,19 @@ export interface VoiceSessionOut {
   client_session_id: string;
   status: SessionStatus;
   mode: VoiceMode;
+  input_kind: InputKind;
+  /** The spoken transcript, or for a scan the lines read off the photo, joined with " | ". */
   transcript: string | null;
   secondary_views: Record<string, string>;
   transcript_language: string | null;
   language_probability: number | null;
   low_language_confidence: boolean;
+  /** Scans only. */
+  image_count: number | null;
+  ocr_lines: string[];
+  ocr_unclear_lines: string[];
+  ocr_notes: string;
+  reader: string | null;
   extraction: BillExtraction | null;
   review_products: ReviewProduct[];
   latencies: Record<string, number>;
@@ -258,6 +283,12 @@ export function normalizeSession(s: VoiceSessionOut): VoiceSessionOut {
   return {
     ...s,
     mode: s.mode === 'stock_in' ? 'stock_in' : 'sale',
+    input_kind: s.input_kind === 'image' ? 'image' : 'voice',
+    ocr_lines: s.ocr_lines || [],
+    ocr_unclear_lines: s.ocr_unclear_lines || [],
+    ocr_notes: s.ocr_notes || '',
+    reader: s.reader ?? null,
+    image_count: s.image_count ?? null,
     secondary_views: s.secondary_views || {},
     latencies: s.latencies || {},
     review_products: (s.review_products || []).map(normalizeReviewProduct),

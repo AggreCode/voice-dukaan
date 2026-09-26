@@ -3,16 +3,34 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
 import { VoiceMode, VoiceSessionOut } from './types';
 
-export interface PendingUpload {
+interface PendingBase {
   clientSessionId: string;
-  blob: Blob;
-  mimeType: string;
-  durationMs: number;
-  /** Recording mode; stored so offline retries resend it. Records from older app versions lack it (= "sale"). */
+  /** sale or stock_in; stored so offline retries resend it. Records from older app versions lack it (= "sale"). */
   mode?: VoiceMode;
   createdAt: number;
   lastError?: string;
   attempts?: number;
+}
+
+/** A recording waiting to upload. `kind` is absent on rows written before scanning existed. */
+export interface PendingVoiceUpload extends PendingBase {
+  kind?: 'voice';
+  blob: Blob;
+  mimeType: string;
+  durationMs: number;
+}
+
+/** Photos of a paper list waiting to upload. Blobs survive in IndexedDB, so a scan taken with no
+ *  signal is not lost: it uploads on the next reconnect like a recording does. */
+export interface PendingScanUpload extends PendingBase {
+  kind: 'image';
+  photos: Blob[];
+}
+
+export type PendingUpload = PendingVoiceUpload | PendingScanUpload;
+
+export function isScanUpload(u: PendingUpload): u is PendingScanUpload {
+  return u.kind === 'image';
 }
 
 const queueStore = createStore('voice-dukan', 'upload-queue');
@@ -78,14 +96,17 @@ function isPermanent(e: unknown): boolean {
 }
 
 async function uploadOne(item: PendingUpload, signal?: AbortSignal): Promise<VoiceSessionOut> {
-  const session = await api.voice.upload({
-    audio: item.blob,
-    clientSessionId: item.clientSessionId,
-    durationMs: item.durationMs,
-    mimeType: item.mimeType,
-    mode: item.mode === 'stock_in' ? 'stock_in' : 'sale',
-    signal,
-  });
+  const mode = item.mode === 'stock_in' ? 'stock_in' : 'sale';
+  const session = isScanUpload(item)
+    ? await api.scan.upload({ photos: item.photos, clientSessionId: item.clientSessionId, mode, signal })
+    : await api.voice.upload({
+        audio: item.blob,
+        clientSessionId: item.clientSessionId,
+        durationMs: item.durationMs,
+        mimeType: item.mimeType,
+        mode,
+        signal,
+      });
   await cacheSession(session);
   await del(item.clientSessionId, queueStore);
   await refreshPendingCount();
@@ -93,14 +114,10 @@ async function uploadOne(item: PendingUpload, signal?: AbortSignal): Promise<Voi
 }
 
 /**
- * Persist the recording first (so a crash/offline can't lose it), then upload.
+ * Persist the capture first (so a crash or dead signal can't lose it), then upload.
  * Resolves with the session on success; rejects (but keeps the item queued) on failure.
  */
-export async function enqueueAndUpload(
-  args: { clientSessionId: string; blob: Blob; mimeType: string; durationMs: number; mode: VoiceMode },
-  signal?: AbortSignal,
-): Promise<VoiceSessionOut> {
-  const item: PendingUpload = { ...args, createdAt: Date.now(), attempts: 0 };
+async function persistThenUpload(item: PendingUpload, signal?: AbortSignal): Promise<VoiceSessionOut> {
   await set(item.clientSessionId, item, queueStore);
   await refreshPendingCount();
   try {
@@ -114,6 +131,20 @@ export async function enqueueAndUpload(
     }
     throw e;
   }
+}
+
+export function enqueueAndUpload(
+  args: { clientSessionId: string; blob: Blob; mimeType: string; durationMs: number; mode: VoiceMode },
+  signal?: AbortSignal,
+): Promise<VoiceSessionOut> {
+  return persistThenUpload({ ...args, kind: 'voice', createdAt: Date.now(), attempts: 0 }, signal);
+}
+
+export function enqueueAndUploadScan(
+  args: { clientSessionId: string; photos: Blob[]; mode: VoiceMode },
+  signal?: AbortSignal,
+): Promise<VoiceSessionOut> {
+  return persistThenUpload({ ...args, kind: 'image', createdAt: Date.now(), attempts: 0 }, signal);
 }
 
 export async function removePending(clientSessionId: string) {

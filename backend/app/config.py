@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     # database
     DATABASE_URL: str = "postgresql+asyncpg://vd:vd@localhost:5433/voicedukan"
 
+    # Secret that signs login tokens and PIN hashes. It MUST NOT depend on the AI keys: tokens used to
+    # be signed with ANTHROPIC_API_KEY + SARVAM_API_KEY, so rotating or first adding a key silently
+    # invalidated every issued token and the app answered "invalid or expired token" for ever
+    # (seen on Render, where ANTHROPIC_API_KEY is never set). Empty = fall back to the old derivation
+    # so existing local installs keep working; set it in production (render.yaml generates one).
+    APP_SECRET: str = ""
+
     # Sarvam (primary STT)
     SARVAM_API_KEY: str = ""
     SARVAM_MODEL: str = "saaras:v4"
@@ -34,6 +41,19 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     GEMINI_THINKING_LEVEL: str = "minimal"  # minimal | low | medium | high
+
+    # --- reading a photographed list (the scan path) ---
+    # gemini = the same key and REST surface the extractor uses, no new dependency | mock = zero cost.
+    OCR_MODE: str = "gemini"
+    # Flash-Lite understands images, so the default reader costs the same as the extractor. Point this
+    # at a stronger model only if eval/run_ocr_eval.py shows Odia handwriting needs it.
+    GEMINI_VISION_MODEL: str = "gemini-3.1-flash-lite"
+    GEMINI_VISION_THINKING_LEVEL: str = "low"  # reading crooked handwriting is worth more than "minimal"
+    MAX_IMAGES_PER_SCAN: int = 3
+    MAX_IMAGE_BYTES: int = 6 * 1024 * 1024  # per photo, after the phone has downscaled it
+    # Photos are read in memory and dropped. Nothing about a customer's handwritten list is kept, and
+    # the free instance has no persistent disk anyway. Turn on only to debug a specific reading fault.
+    KEEP_IMAGES: bool = False
 
     # which extractor runs: "gemini" (cheap, default), "claude" (needs ANTHROPIC_API_KEY), or "mock" (zero-cost stub:
     # every item comes back unresolved and needs_review=True, for testing recording/STT/review/save).
@@ -63,12 +83,19 @@ class Settings(BaseSettings):
     CHUNK_HARD_SPLIT_SECONDS: float = 29.5
     MIN_SPEECH_SECONDS: float = 0.5
 
+    # Spelling backstop for a word cut short ("para", "bisc"). Only fills in lines the model left
+    # unresolved, always flagged for review -- see services/fuzzy.py.
+    FUZZY_FILL: bool = True
+    FUZZY_MIN_SCORE: float = 0.72
+    FUZZY_MIN_GAP: float = 0.08  # below this the two best candidates are offered instead of one chosen
+
     # extraction guards
     REVIEW_CONFIDENCE_FLOOR: float = 0.75
     LOW_LANGUAGE_PROBABILITY: float = 0.4
 
     @field_validator("SARVAM_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_PROJECT_ID",
-                     "SARVAM_MODEL", "GEMINI_MODEL", "CLAUDE_MODEL", "DATABASE_URL", mode="before")
+                     "SARVAM_MODEL", "GEMINI_MODEL", "GEMINI_VISION_MODEL", "CLAUDE_MODEL",
+                     "DATABASE_URL", "APP_SECRET", mode="before")
     @classmethod
     def _strip_pasted_value(cls, v):
         """Hosting dashboards keep the newline when a value is pasted, and an API key with a trailing
@@ -117,6 +144,13 @@ class Settings(BaseSettings):
     def _extractor_mode(cls, v: str) -> str:
         if v not in {"gemini", "claude", "mock"}:
             raise ValueError("EXTRACTOR_MODE must be gemini|claude|mock")
+        return v
+
+    @field_validator("OCR_MODE")
+    @classmethod
+    def _ocr_mode(cls, v: str) -> str:
+        if v not in {"gemini", "mock"}:
+            raise ValueError("OCR_MODE must be gemini|mock")
         return v
 
     @property

@@ -7,9 +7,23 @@ The shopkeeper taps record and dictates a whole bill in Odia, Hindi or English, 
 
 …and gets an editable review table with product, quantity, unit, price and confidence. Saving updates stock.
 
+Or the customer hands over a paper list, the shopkeeper photographs it, and the same review table
+comes back. Handwritten or printed, Odia, Hindi or English, and a word cut short ("ପାରା", "bisc") is
+matched against the shop's own inventory.
+
 ## How it works
 
+Two ways in, one review screen. Both produce lines of text joined with `|`, and everything after that
+is shared: the same catalog matching, the same guards, the same corrections and alias learning.
+
 ```
+phone (PWA, camera)
+  └─ POST /api/scan/sessions (1-3 photos, downscaled to 1600 px on the phone)
+       ├─ Gemini 3.1 Flash-Lite reads the photo -> the lines exactly as written      ≈ ₹0.2 / list
+       │    (no product matching here: reading faults and matching faults stay tellable apart)
+       └─ the lines, joined with " | ", go into the same extractor as a dictated bill
+            photos are read in memory and never written to disk (KEEP_IMAGES=false)
+
 phone (PWA, MediaRecorder)
   └─ POST /api/voice/sessions (audio ≤ 90 s)
        ├─ ffmpeg → 16 kHz mono wav
@@ -23,6 +37,8 @@ phone (PWA, MediaRecorder)
 ```
 
 The extractor is swappable with one setting: `EXTRACTOR_MODE=gemini` (default), `claude`, or `mock` (no LLM, zero cost).
+The photo reader is swappable the same way: `OCR_MODE=gemini` (default) or `mock`. A Sarvam Vision reader
+belongs behind the same protocol once `eval/run_ocr_eval.py` has numbers on real shop photos.
 Every raw view (transcript, LLM JSON, corrections) is stored so accuracy can be replayed and measured (`eval/`).
 
 ## Inventory
@@ -38,6 +54,9 @@ Every raw view (transcript, LLM JSON, corrections) is stored so accuracy can be 
 - **CSV import** columns: `name, brand, category, pack_unit, sub_unit, pack_size, sell_price, cost_price, aliases`
   (separated by `;`), `opening_stock` (loose units), `local_name`. Only `name` is required; re-importing updates rows.
 
+- **Stock in by photo.** *Inventory → By photo*, or the Scan tab in stock-in mode: photograph the
+  supplier bill or delivery challan and each line becomes stock coming in.
+
 API: `POST /api/products/{id}/stock` (`qty` + `unit`, or `delta_qty`), `POST /api/products/{id}/stock/count`,
 `GET /api/products/{id}/ledger`, and voice uploads accept `mode=sale|stock_in`.
 
@@ -45,8 +64,9 @@ API: `POST /api/products/{id}/stock` (`qty` + `unit`, or `delta_qty`), `POST /ap
 
 | Key | Where | Cost |
 |---|---|---|
+| `APP_SECRET` | generate: `python3 -c "import secrets;print(secrets.token_urlsafe(32))"` | free; signs login tokens |
 | `SARVAM_API_KEY` | dashboard.sarvam.ai → API Keys | ₹100 free credit on signup |
-| `GEMINI_API_KEY` | aistudio.google.com → Get API key | free tier, no card; free-tier data may be used by Google, so test with demo data |
+| `GEMINI_API_KEY` | aistudio.google.com → Get API key | free tier, no card; used for both extraction and reading photos. Free-tier data may be used by Google, so test with demo data |
 | `ANTHROPIC_API_KEY` | console.anthropic.com | optional; only for `EXTRACTOR_MODE=claude`, $5 minimum top-up |
 
 ## Run it locally (tested path)
@@ -87,7 +107,9 @@ cloudflared tunnel --url http://localhost:5173      # or: ngrok http 5173
 Open the printed `https://…` link on the phone. The Vite dev server forwards `/api` to the backend.
 
 ### Health check
-`GET /api/health` shows which keys are configured and which extractor and model are active.
+`GET /api/health` shows which keys are configured, which extractor, reader and models are active, and
+whether `APP_SECRET` is set (`app_secret_set`). If it is false in production, logins break the next time
+an AI key changes.
 
 ## Deploy
 
@@ -101,13 +123,14 @@ Voice detection has three backends, chosen automatically: `silero` (best, needs 
 ```
 backend/app/audio        ffmpeg normalise, Silero VAD chunking
 backend/app/stt          STTProvider protocol, Sarvam (primary), Google Chirp (optional shadow)
+backend/app/vision       ImageReader protocol, reader prompt, Gemini reader, mock reader
 backend/app/extraction   prompt (cheat sheets + rules), Gemini / Claude / mock extractors, guards
 backend/app/services     catalog snapshot, pipeline, ledger (stock + corrections + learned aliases)
 backend/app/api          FastAPI routers: shops, products, voice sessions, transactions
 backend/alembic          migrations
 backend/scripts          seed_catalog.py, export_sessions_to_eval.py
-frontend/                React + Vite + Tailwind PWA (Record, Review, Ledger, Products, Settings)
-eval/                    STT + extraction eval harness, seed catalogs (medical, kirana)
+frontend/                React + Vite + Tailwind PWA (Speak, Scan, Review, Ledger, Inventory, Settings)
+eval/                    STT + OCR + extraction eval harness, seed catalogs (medical, kirana)
 infra/                   docker-compose, Dockerfiles, Caddyfile
 ```
 

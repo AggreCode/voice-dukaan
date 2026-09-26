@@ -1,5 +1,5 @@
 import ConfidenceBadge, { confidenceLevel } from './ConfidenceBadge';
-import { COMMON_UNITS } from '../lib/constants';
+import { COMMON_UNITS, extractionReasonLabel } from '../lib/constants';
 import { PriceKind, ReviewItem, defaultUnitPrice, lineTotal } from '../lib/reviewModel';
 import { formatStock } from '../lib/stock';
 import { cx, fmtMoney } from '../lib/utils';
@@ -13,12 +13,15 @@ interface Props {
   onActivate: () => void;
   /** "cost" for purchases: label price as cost and default to cost_price. */
   priceKind?: PriceKind;
+  /** Where the line came from, so the evidence under it reads "Heard" or "Written". */
+  source?: 'voice' | 'image';
 }
 
-export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell' }: Props) {
+export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice' }: Props) {
   const conf = item.original?.confidence ?? (item.product ? 1 : 0);
   const level = confidenceLevel(conf, !!item.product);
   const needsReview = item.original?.needs_review ?? false;
+  const reasonText = extractionReasonLabel(item.original?.reason);
   const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
   const setUnit = (unit: string) => {
@@ -122,10 +125,24 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
         </label>
       </div>
 
+      {/* Evidence, then what to do about it: the words this line came from, and any flag in plain
+          language. Both, not one or the other -- the words are how the shopkeeper judges the flag. */}
       <div className="mt-2 flex items-end justify-between gap-2">
-        <p className="min-w-0 flex-1 truncate text-[11px] text-slate-500">
-          {item.original?.reason ? item.original.reason : item.original?.spoken_span ? `“${item.original.spoken_span}”` : item.item_index === null ? 'Added manually' : ''}
-        </p>
+        <div className="min-w-0 flex-1">
+          {item.original?.spoken_span ? (
+            <p className="truncate text-[11px] text-slate-500">
+              <span className="mr-1 font-medium text-slate-400">{source === 'image' ? 'Written' : 'Heard'}</span>
+              “{item.original.spoken_span}”
+            </p>
+          ) : item.item_index === null ? (
+            <p className="text-[11px] text-slate-500">Added by hand</p>
+          ) : null}
+          {reasonText && (
+            <p className={cx('truncate text-[11px] font-medium', level === 'red' ? 'text-red-700' : 'text-amber-700')}>
+              {reasonText}
+            </p>
+          )}
+        </div>
         <p className="shrink-0 text-sm font-semibold text-slate-800">= {fmtMoney(lineTotal(item))}</p>
       </div>
     </li>

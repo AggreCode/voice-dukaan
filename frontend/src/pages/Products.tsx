@@ -50,7 +50,10 @@ export default function Products() {
         <h1 className="text-lg font-bold text-primary-dark">Inventory</h1>
         <div className="flex gap-2">
           <Link to="/?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
-            Add by voice
+            By voice
+          </Link>
+          <Link to="/scan?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
+            By photo
           </Link>
           <button type="button" onClick={() => setAdding(true)} className="min-h-[44px] rounded-lg bg-primary px-3 text-sm font-semibold text-white">
             + Add product

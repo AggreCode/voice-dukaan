@@ -6,7 +6,9 @@ requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
-  "sqlalchemy>=2.0",
+  # [asyncio] pulls greenlet, which sqlalchemy.ext.asyncio needs at import time. Without the extra
+  # the install succeeds and the app then fails to start on some Python/platform combinations.
+  "sqlalchemy[asyncio]>=2.0",
   "alembic>=1.13",
   "asyncpg>=0.29",
   "pydantic>=2.7",

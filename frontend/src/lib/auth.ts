@@ -34,6 +34,11 @@ export const auth = {
     set(KEYS.token, token ?? null);
     window.dispatchEvent(new Event('vd:auth'));
   },
+  /** Drop only the signed token, keeping the shop. Requests then fall back to the X-Shop-Id header,
+   *  which is how the app recovers from a token signed with a secret the server no longer has. */
+  clearToken() {
+    set(KEYS.token, null);
+  },
   clear() {
     Object.values(KEYS).forEach((k) => set(k, null));
     window.dispatchEvent(new Event('vd:auth'));

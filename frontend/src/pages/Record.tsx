@@ -181,7 +181,7 @@ export default function Record() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Voice Dukan'}</h1>
-          <p className="text-xs text-slate-500">Record</p>
+          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Speak · stock in' : 'Speak the bill'}</p>
         </div>
         {pending > 0 && (
           <button
@@ -274,8 +274,30 @@ export default function Record() {
           )}
           {phase === 'error' && error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         </div>
+
+        {/* The other way in. A customer who hands over a written list is faster to photograph than to
+            read out, so scanning is offered here as an equal, not hidden in a menu. */}
+        {(phase === 'idle' || phase === 'error') && (
+          <button
+            type="button"
+            onClick={() => nav(mode === 'stock_in' ? '/scan?mode=stock_in' : '/scan')}
+            className="mt-2 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-primary/40 bg-white text-sm font-bold text-primary shadow-sm active:bg-primary-light/40"
+          >
+            <CameraIcon className="h-5 w-5" />
+            {mode === 'stock_in' ? 'Photograph the bill instead' : 'Photograph a paper list instead'}
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+function CameraIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2a2 2 0 0 0 1.7-1l.5-.8a1 1 0 0 1 .85-.5h4.5a1 1 0 0 1 .85.5l.5.8a2 2 0 0 0 1.7 1h1.2A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-9z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
   );
 }
 

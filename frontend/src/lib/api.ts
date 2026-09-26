@@ -75,6 +75,22 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     throw new ApiError(0, 'Network error. Check your connection.');
   }
 
+  // A stored token the server can no longer verify (its signing secret changed) used to lock the app
+  // out for good. Drop the token and retry once with the plain X-Shop-Id header; if that also fails,
+  // sign out so Onboarding is shown instead of an unexplained error on every screen.
+  if (res.status === 401 && headers['Authorization']) {
+    auth.clearToken();
+    delete headers['Authorization'];
+    try {
+      // body is FormData or a string here, both replayable.
+      res = await fetch(url, { method: opts.method ?? 'GET', headers, body, signal: opts.signal });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') throw e;
+      throw new ApiError(0, 'Network error. Check your connection.');
+    }
+    if (res.status === 401) auth.clear();
+  }
+
   const text = await res.text();
   let parsed: unknown = null;
   if (text) {
@@ -130,6 +146,19 @@ export const api = {
   glossary: {
     search: (shopType: ShopType | string, q: string, limit = 20) =>
       request<string[]>('/api/glossary', { query: { shop_type: shopType, q, limit } }),
+  },
+
+  /** Photographed list: the photos are read by the OCR model, then matched against the catalog by the
+   *  same extractor the voice path uses, so the response is the same session shape. */
+  scan: {
+    upload: async (args: { photos: Blob[]; clientSessionId: string; mode?: VoiceMode; signal?: AbortSignal }) => {
+      const fd = new FormData();
+      args.photos.forEach((p, i) => fd.append('images', p, `page${i + 1}.jpg`));
+      fd.append('client_session_id', args.clientSessionId);
+      fd.append('mode', args.mode ?? 'sale');
+      return normalizeSession(await request<VoiceSessionOut>('/api/scan/sessions', { method: 'POST', body: fd, signal: args.signal }));
+    },
+    get: async (id: string) => normalizeSession(await request<VoiceSessionOut>(`/api/scan/sessions/${id}`)),
   },
 
   voice: {
