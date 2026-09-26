@@ -20,6 +20,12 @@ function LowBadge() {
   return <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800">Low stock</span>;
 }
 
+/** A product added by a stock-in has a cost but no selling price yet: the margin is the shop's to set.
+ *  Without this badge it would sit in the list at zero and could be sold for nothing. */
+function NoPriceBadge() {
+  return <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-red-800">Set price</span>;
+}
+
 export default function Products() {
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -122,9 +128,10 @@ export default function Products() {
                 </div>
                 <div className="max-w-[45%] shrink-0 text-right">
                   <div className={cx('text-sm font-bold leading-tight', low ? 'text-amber-700' : 'text-slate-800')}>{formatStock(p.stock_qty, p.unit)}</div>
-                  {low && (
-                    <div className="mt-1">
-                      <LowBadge />
+                  {(low || p.sell_price <= 0) && (
+                    <div className="mt-1 flex flex-wrap justify-end gap-1">
+                      {p.sell_price <= 0 && <NoPriceBadge />}
+                      {low && <LowBadge />}
                     </div>
                   )}
                 </div>

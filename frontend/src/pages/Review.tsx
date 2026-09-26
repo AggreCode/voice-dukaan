@@ -11,6 +11,11 @@ import { auth } from '../lib/auth';
 import {
   PickedProduct, ReviewItem, buildReviewItems, defaultUnitPrice, lineTotal, newBlankItem, priceKindFor, round2, toPicked,
 } from '../lib/reviewModel';
+
+/** The name a not-yet-known line would be created under, or "" when there is nothing to go on. */
+function newItemName(it: ReviewItem): string {
+  return (it.original?.product_name_guess ?? '').trim();
+}
 import { PaymentMode, TransactionIn, VoiceSessionOut, normalizeSession } from '../lib/types';
 import { cacheSession, getCachedSession } from '../lib/uploadQueue';
 import { cx, fmtMoney } from '../lib/utils';
@@ -108,8 +113,19 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
   const pickerItem = items.find((i) => i.key === pickerFor) ?? null;
 
   const total = useMemo(() => round2(items.reduce((s, i) => s + lineTotal(i), 0)), [items]);
-  const missingProduct = items.some((i) => !i.product);
-  const redRows = items.filter((i) => confidenceLevel(i.original?.confidence ?? 1, !!i.product) === 'red').length;
+  const isPurchase = intent === 'purchase';
+  /**
+   * Stocking in is how a product first enters the inventory, so an unmatched line on a purchase is a
+   * NEW item, not an error: saving creates it with this bill's rate as its cost. On a sale the old
+   * rule stands, because a shop cannot sell what it does not have on its shelves.
+   */
+  const newItems = isPurchase ? items.filter((i) => !i.product && !!newItemName(i)) : [];
+  const newKeys = new Set(newItems.map((i) => i.key));
+  const blockingRows = items.filter((i) => !i.product && !newKeys.has(i.key));
+  const missingProduct = blockingRows.length > 0;
+  const redRows = items.filter(
+    (i) => !newKeys.has(i.key) && confidenceLevel(i.original?.confidence ?? 1, !!i.product) === 'red',
+  ).length;
   const canSave = items.length > 0 && !missingProduct;
 
   /** Switching sale/purchase re-defaults prices the user has not typed (sell vs cost price). */
@@ -145,12 +161,55 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
     setPickerFor(null);
   };
 
+  /**
+   * Create every new product this bill introduces, and hand back the rows with those products filled
+   * in. Opening stock stays at zero: the purchase being saved is what puts the stock on the shelf, so
+   * counting it here as well would double it. The selling price is left unset, because the margin is
+   * the shopkeeper's to decide, and Inventory marks such products until they set one.
+   */
+  const createNewProducts = async (rows: ReviewItem[]): Promise<ReviewItem[]> => {
+    const out = [...rows];
+    for (let idx = 0; idx < out.length; idx += 1) {
+      const row = out[idx];
+      if (row.product) continue;
+      const name = newItemName(row);
+      if (!name) continue;
+      let created: PickedProduct;
+      try {
+        created = toPicked(
+          await api.products.create({
+            name,
+            unit: row.unit || 'piece',
+            cost_price: Number(row.unit_price) > 0 ? Number(row.unit_price) : null,
+            sell_price: 0,
+            opening_stock: 0,
+          }),
+        );
+      } catch (e) {
+        // Two lines of the same bill can name the same product, and the second create is rejected as
+        // a duplicate. Find the one that already exists rather than failing the whole save.
+        const existing = (await api.products.list(name)).find(
+          (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
+        );
+        if (!existing) throw e;
+        created = toPicked(existing);
+      }
+      out[idx] = { ...row, product: created };
+    }
+    return out;
+  };
+
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      let rows = items;
+      if (newItems.length > 0) {
+        rows = await createNewProducts(items);
+        setItems(rows);
+      }
       const body: TransactionIn = {
         voice_session_id: session.session_id,
         type: intent,
-        items: items.map((i) => ({
+        items: rows.map((i) => ({
           item_index: i.item_index,
           product_code: i.product!.code,
           qty: Number(i.qty) || 0,
@@ -278,6 +337,18 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
         </p>
       )}
 
+      {newItems.length > 0 && (
+        <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-primary-dark">
+          <p className="font-semibold">
+            {newItems.length} item{newItems.length === 1 ? '' : 's'} not in your inventory yet
+          </p>
+          <p className="mt-0.5 text-xs">
+            Saving adds {newItems.length === 1 ? 'it' : 'them'} with this bill's rate as the cost price and the
+            stock from this bill. Set your selling prices afterwards in Inventory.
+          </p>
+        </div>
+      )}
+
       <ul className="mt-3 space-y-2">
         {items.map((it) => (
           <ItemRow
@@ -290,6 +361,7 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
             onPickProduct={() => setPickerFor(it.key)}
             priceKind={priceKind}
             source={fromPhoto ? 'image' : 'voice'}
+            newItemOk={newKeys.has(it.key)}
           />
         ))}
       </ul>
@@ -389,11 +461,19 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
                 title={missingProduct ? 'Pick a product for every row' : undefined}
                 className="min-h-[52px] rounded-xl bg-primary px-6 text-base font-semibold text-white disabled:bg-slate-300"
               >
-                {save.isPending ? 'Saving…' : 'Save'}
+                {save.isPending
+                  ? newItems.length > 0 ? 'Adding items…' : 'Saving…'
+                  : newItems.length > 0 ? `Add ${newItems.length} new & save` : 'Save'}
               </button>
             )}
           </div>
-          {missingProduct && <p className="mt-1 text-[11px] text-red-600">Every row needs a product before saving.</p>}
+          {missingProduct && (
+            <p className="mt-1 text-[11px] text-red-600">
+              {isPurchase
+                ? 'A row with no name needs a product picked before saving.'
+                : 'Every row needs a product before saving. Selling needs an item that is already in stock.'}
+            </p>
+          )}
         </div>
       </div>
 

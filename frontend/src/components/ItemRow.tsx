@@ -15,13 +15,23 @@ interface Props {
   priceKind?: PriceKind;
   /** Where the line came from, so the evidence under it reads "Heard" or "Written". */
   source?: 'voice' | 'image';
+  /**
+   * True on a stock-in row whose product is not in the inventory yet. Stocking in is how a product
+   * ENTERS the inventory, so "not in your inventory" is not an error there, it is the normal first
+   * day of an item. The row stays editable and saving creates it.
+   */
+  newItemOk?: boolean;
 }
 
-export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice' }: Props) {
+export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice', newItemOk = false }: Props) {
   const conf = item.original?.confidence ?? (item.product ? 1 : 0);
   const level = confidenceLevel(conf, !!item.product);
   const needsReview = item.original?.needs_review ?? false;
-  const reasonText = extractionReasonLabel(item.original?.reason);
+  const isNew = !item.product && newItemOk;
+  // "Not in your inventory" is the whole point of a stock-in line, so it is not worth saying twice.
+  const reasonText = isNew
+    ? extractionReasonLabel((item.original?.reason ?? '').split(',').filter((r) => r.trim() !== 'not_in_catalog').join(','))
+    : extractionReasonLabel(item.original?.reason);
   const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
   const setUnit = (unit: string) => {
@@ -36,7 +46,7 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
       className={cx(
         'rounded-xl border p-3 transition-colors',
         active ? 'border-primary ring-2 ring-primary/30' : 'border-slate-200',
-        needsReview || level === 'red' ? 'bg-red-50' : level === 'amber' ? 'bg-amber-50/60' : 'bg-white',
+        isNew ? 'bg-primary/5' : needsReview || level === 'red' ? 'bg-red-50' : level === 'amber' ? 'bg-amber-50/60' : 'bg-white',
       )}
     >
       <div className="flex items-start gap-2">
@@ -49,7 +59,7 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
           }}
           className={cx(
             'min-h-[48px] min-w-0 flex-1 rounded-lg border px-3 py-1.5 text-left',
-            item.product ? 'border-slate-300 bg-white' : 'border-dashed border-red-400 bg-white',
+            item.product ? 'border-slate-300 bg-white' : isNew ? 'border-dashed border-primary/60 bg-white' : 'border-dashed border-red-400 bg-white',
           )}
         >
           {item.product ? (
@@ -61,6 +71,13 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
                 {item.product.code} · stock {formatStock(item.product.stock_qty, item.product.unit)}
               </div>
             </>
+          ) : isNew ? (
+            <>
+              <div className="truncate font-semibold text-primary-dark">
+                {item.original?.product_name_guess || 'New item'} <span className="font-normal">▾</span>
+              </div>
+              <div className="text-xs text-primary">Will be added to your inventory · tap to pick an existing one</div>
+            </>
           ) : (
             <>
               <div className="truncate font-semibold text-red-700">
@@ -70,7 +87,13 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
             </>
           )}
         </button>
-        <ConfidenceBadge confidence={conf} hasProduct={!!item.product} className="mt-1 shrink-0" />
+        {isNew ? (
+          <span className="mt-1 shrink-0 rounded-full bg-primary/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-primary-dark">
+            New
+          </span>
+        ) : (
+          <ConfidenceBadge confidence={conf} hasProduct={!!item.product} className="mt-1 shrink-0" />
+        )}
         <button
           type="button"
           onClick={(e) => {
