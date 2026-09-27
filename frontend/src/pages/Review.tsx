@@ -218,6 +218,21 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
     return best ? toPicked(best) : null;
   };
 
+  /**
+   * The products this line could mean, resolved to real catalog rows. The model lists them whenever a
+   * word covers several products the shop stocks ("biscuit", "soap", "oil"), and the shop's own
+   * price for whichever is chosen comes with it.
+   */
+  const choicesFor = (it: ReviewItem): PickedProduct[] => {
+    const codes = (it.original?.alternatives ?? []).map((a) => a.product_id);
+    if (it.product) codes.unshift(it.product.code);
+    const seen = new Set<string>();
+    return codes
+      .filter((c) => !seen.has(c) && seen.add(c))
+      .map((code) => knownProducts.find((p) => p.code === code))
+      .filter((p): p is PickedProduct => !!p);
+  };
+
   const save = useMutation({
     mutationFn: async () => {
       let rows = items;
@@ -387,6 +402,8 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
             priceKind={priceKind}
             source={fromPhoto ? 'image' : 'voice'}
             newItemOk={newKeys.has(it.key)}
+            choices={choicesFor(it)}
+            onChoose={(p) => selectProduct(it.key, p)}
             suggestion={newKeys.has(it.key) ? suggestionFor(it) : null}
             onUseSuggestion={() => {
               const p = suggestionFor(it);

@@ -34,6 +34,8 @@ def new_token() -> str:
 def token_hash(token: str) -> str:
     """Peppered, so the stored value is useless without the application secret."""
     s = get_settings()
+    # The "vd-session:" prefix is part of the stored hash, not branding: changing it would invalidate
+    # every session in the database and sign every shopkeeper out.
     return hmac.new(("vd-session:" + s.APP_SECRET).encode(), token.encode(), hashlib.sha256).hexdigest()
 
 

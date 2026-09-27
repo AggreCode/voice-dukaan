@@ -137,7 +137,7 @@ export default function Settings() {
           {signOut.isPending ? 'Signing out…' : `Sign out${auth.getUsername() ? ` (${auth.getUsername()})` : ''}`}
         </button>
       </section>
-      <p className="mt-6 text-center text-[11px] text-slate-400">Voice Dukan · v{__APP_VERSION__}</p>
+      <p className="mt-6 text-center text-[11px] text-slate-400">Mo Dokan · v{__APP_VERSION__}</p>
     </div>
   );
 }

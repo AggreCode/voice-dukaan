@@ -1,7 +1,7 @@
 [project]
-name = "voice-dukan-backend"
+name = "mo-dokan-backend"
 version = "0.1.0"
-description = "Voice-driven sales & inventory ledger backend (Odia/Hindi/English)"
+description = "Mo Dokan: voice and photo sales & inventory ledger (Odia/Hindi/English)"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",

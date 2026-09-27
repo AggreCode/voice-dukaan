@@ -16,10 +16,10 @@ Free plan: 0.5 GB storage, scales to zero when idle, no card, no expiry date.
 ## 2. Push the code to GitHub
 
 ```bash
-cd ~/Desktop/side_projects/voice-dukan
-git add -A && git commit -m "Voice Dukan"
+cd ~/Desktop/Gupshup/Projects/voice-dukaan
+git add -A && git commit -m "Mo Dokan"
 # create an empty repo at https://github.com/new (private is fine), then:
-git remote add origin https://github.com/<you>/voice-dukan.git
+git remote add origin https://github.com/<you>/mo-dokan.git
 git push -u origin main
 ```
 `.env` and `secrets/` are git-ignored, so no keys reach GitHub.
@@ -34,7 +34,14 @@ git push -u origin main
    browser answer **invalid or expired token** until its stored token was cleared.
 4. Deploy. First build takes 5–10 minutes. Database migrations run automatically on start.
 
-Your app: `https://voice-dukan.onrender.com`. It is HTTPS, so phone microphones work.
+Your app: `https://mo-dokan.onrender.com`. It is HTTPS, so phone microphones and the login
+cookie both work.
+
+**Renaming an existing service.** Changing `name:` in `render.yaml` on a Blueprint that is already
+deployed makes Render create a *second* service rather than rename the first. To keep one service and
+one database, rename it in the dashboard first (the service → Settings → Name → `mo-dokan`), which
+changes the URL straight away, and let this file follow. The old address stops working, so anyone with
+it bookmarked needs the new one.
 
 ## 4. First run
 

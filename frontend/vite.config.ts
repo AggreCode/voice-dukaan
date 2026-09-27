@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Voice Dukan',
-        short_name: 'Voice Dukan',
-        description: 'Dictate a bill by voice, review it in a table.',
+        name: 'Mo Dokan',
+        short_name: 'Mo Dokan',
+        description: 'Speak or photograph the bill. Mo Dokan writes it.',
         theme_color: '#0f766e',
         background_color: '#f8fafc',
         display: 'standalone',

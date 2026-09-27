@@ -12,7 +12,7 @@ export function Brand({ tagline }: { tagline: string }) {
   return (
     <header className="mb-7 text-center">
       <img src="/icon.svg" alt="" className="mx-auto mb-3 h-16 w-16 rounded-2xl shadow-sm" />
-      <h1 className="text-2xl font-bold tracking-tight text-primary-dark">Voice Dukan</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-primary-dark">Mo Dokan</h1>
       <p className="mt-1 text-sm text-slate-500">{tagline}</p>
     </header>
   );

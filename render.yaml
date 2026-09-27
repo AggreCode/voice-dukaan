@@ -2,7 +2,7 @@
 # Render's own free Postgres expires 30 days after creation, so the database lives on Neon instead.
 services:
   - type: web
-    name: voice-dukan
+    name: mo-dokan
     runtime: docker
     plan: free
     region: singapore

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { COMMON_UNITS, LOCAL_NAME_HELP, LOCAL_NAME_PLACEHOLDER, STOCK_ADJUST_REASONS, movementReasonLabel } from '../lib/constants';
+import { round2 } from '../lib/reviewModel';
 import { formatSignedQty, formatStock } from '../lib/stock';
 import { ProductOut, ProductPatch, StockAdjustReason, numOrNull } from '../lib/types';
 import { cx, fmtDateTime, fmtMoney } from '../lib/utils';
@@ -11,6 +12,7 @@ import { AddProductInline } from '../components/AddProductInline';
 
 const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 const sectionTitle = 'text-xs font-semibold uppercase tracking-wide text-slate-500';
+const bigField = 'mt-1 min-h-[56px] w-full rounded-xl border border-slate-300 bg-white px-3 text-2xl font-bold tabular-nums text-slate-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
 function isLow(p: ProductOut): boolean {
   return p.stock_qty <= p.low_stock_threshold;
@@ -184,11 +186,6 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
   const [adjQty, setAdjQty] = useState('');
   const [reason, setReason] = useState<StockAdjustReason>('restock');
   const [adjNote, setAdjNote] = useState('');
-  // (b) count
-  const [countQty, setCountQty] = useState('');
-  // aliases
-  const [alias, setAlias] = useState('');
-  const [aliasLang, setAliasLang] = useState('or');
 
   const onErr = (e: unknown) => toast.error(e instanceof ApiError ? e.message : (e as Error).message);
 
@@ -230,27 +227,17 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
     onError: onErr,
   });
 
-  const count = useMutation({
-    mutationFn: () => api.products.countStock(product.id, { counted_qty: Number(countQty) }),
+  /** Prices on their own, so setting a price cannot touch the name, unit or anything else. */
+  const savePrices = useMutation({
+    mutationFn: () =>
+      api.products.update(product.id, {
+        sell_price: Number(form.sell_price) || 0,
+        cost_price: numOrNull(form.cost_price),
+      }),
     onSuccess: (p) => {
-      toast.success(`Stock set to ${formatStock(p.stock_qty, p.unit)}`);
-      setCountQty('');
+      toast.success(`Price set: ${fmtMoney(p.sell_price)} per ${p.unit}`);
       onChanged(p);
     },
-    onError: onErr,
-  });
-
-  const addAlias = useMutation({
-    mutationFn: () => api.products.addAlias(product.id, alias.trim(), aliasLang),
-    onSuccess: (p) => {
-      setAlias('');
-      onChanged(p);
-    },
-    onError: onErr,
-  });
-  const delAlias = useMutation({
-    mutationFn: (a: string) => api.products.deleteAlias(product.id, a),
-    onSuccess: onChanged,
     onError: onErr,
   });
   const toggleActive = useMutation({
@@ -264,11 +251,16 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
 
   const adjN = Number(adjQty);
   const adjValid = adjQty.trim() !== '' && Number.isFinite(adjN) && adjN > 0;
-  const counted = numOrNull(countQty);
-  const countValid = counted !== null && counted >= 0;
   const current = formatStock(product.stock_qty, product.unit);
-  const after = countValid ? formatStock(counted, product.unit) : '—';
   const low = isLow(product);
+
+  const sell = Number(form.sell_price) || 0;
+  const cost = numOrNull(form.cost_price);
+  const margin = cost === null || cost <= 0 || sell <= 0
+    ? null
+    : { amount: round2(sell - cost), percent: cost > 0 ? ((sell - cost) / cost) * 100 : null };
+  const pricesChanged =
+    sell !== Number(product.sell_price) || numOrNull(form.cost_price) !== (product.cost_price ?? null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
@@ -284,16 +276,70 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2">
-          {/* Current stock */}
-          <section className="rounded-xl bg-slate-50 p-3">
+          {/* Price first. It is what a shopkeeper opens a product for: the wholesaler's rate is on the
+              bill, the margin is theirs to decide, and neither should be behind a scroll. */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              savePrices.mutate();
+            }}
+            className="rounded-xl border-2 border-primary/30 bg-primary/5 p-3"
+          >
             <div className="flex items-baseline justify-between gap-2">
-              <p className={sectionTitle}>In stock</p>
-              <p className={cx('text-right text-lg font-bold', low ? 'text-amber-700' : 'text-slate-900')}>{current}</p>
+              <p className={sectionTitle}>Price per {product.unit}</p>
+              <p className={cx('text-right text-sm font-semibold', low ? 'text-amber-700' : 'text-slate-600')}>
+                {current} in stock {low ? <LowBadge /> : null}
+              </p>
             </div>
-            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-              <span>{low ? <LowBadge /> : null}</span>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="text-xs font-medium text-slate-700">
+                Selling price ₹
+                <input
+                  className={bigField}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  autoFocus
+                  value={form.sell_price}
+                  onChange={(e) => setForm({ ...form, sell_price: e.target.value })}
+                />
+              </label>
+              <label className="text-xs text-slate-600">
+                Cost price ₹
+                <input
+                  className={bigField}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  placeholder="Optional"
+                  value={form.cost_price}
+                  onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
+                />
+              </label>
             </div>
-          </section>
+
+            <p className="mt-1.5 min-h-[18px] text-xs">
+              {margin === null ? (
+                <span className="text-slate-500">Add a cost price to see your margin.</span>
+              ) : (
+                <span className={margin.amount >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-red-700'}>
+                  Margin {fmtMoney(margin.amount)} per {product.unit}
+                  {margin.percent !== null && ` · ${margin.percent.toFixed(0)}%`}
+                </span>
+              )}
+            </p>
+
+            <button
+              type="submit"
+              disabled={savePrices.isPending || !pricesChanged}
+              className="mt-2 min-h-[50px] w-full rounded-xl bg-primary text-base font-bold text-white disabled:bg-slate-300"
+            >
+              {savePrices.isPending ? 'Saving…' : pricesChanged ? 'Set price' : 'Price saved'}
+            </button>
+          </form>
 
           {/* (a) Add or remove stock */}
           <section className="rounded-xl border border-slate-200 p-3">
@@ -334,28 +380,6 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
             </div>
           </section>
 
-          {/* (b) Correct stock count */}
-          <section className="rounded-xl border border-slate-200 p-3">
-            <p className={sectionTitle}>Correct stock count</p>
-            <div className="mt-2 grid grid-cols-[1fr_auto] items-end gap-2">
-              <label className="text-xs text-slate-600">
-                I counted ({product.unit})
-                <input type="number" inputMode="decimal" min={0} step="any" value={countQty} onChange={(e) => setCountQty(e.target.value)} placeholder="0" className={field} />
-              </label>
-              <button
-                type="button"
-                disabled={!countValid || count.isPending}
-                onClick={() => count.mutate()}
-                className="min-h-[44px] rounded-lg bg-primary px-4 font-semibold text-white disabled:bg-slate-300"
-              >
-                {count.isPending ? 'Saving…' : 'Set'}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-slate-600">
-              Current: {current}. After: {after}.
-            </p>
-          </section>
-
           {/* (c) Stock history */}
           <section className="rounded-xl border border-slate-200 p-3">
             <p className={sectionTitle}>Stock history</p>
@@ -388,44 +412,19 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
             )}
           </section>
 
-          {/* Aliases */}
-          <section className="rounded-xl border border-slate-200 p-3">
-            <p className={sectionTitle}>Aliases</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {product.aliases.length === 0 && <span className="text-xs text-slate-400">None yet</span>}
-              {product.aliases.map((a) => (
-                <span key={a} className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-sm">
-                  {a}
-                  <button type="button" aria-label={`Remove ${a}`} onClick={() => delAlias.mutate(a)} className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-red-100 hover:text-red-600">×</button>
-                </span>
-              ))}
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (alias.trim()) addAlias.mutate();
-              }}
-              className="mt-2 flex gap-2"
-            >
-              <input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="New alias" className={cx(field, 'flex-1')} />
-              <select value={aliasLang} onChange={(e) => setAliasLang(e.target.value)} className={cx(field, 'w-20')} aria-label="Alias language">
-                <option value="or">or</option>
-                <option value="hi">hi</option>
-                <option value="en">en</option>
-              </select>
-              <button type="submit" disabled={!alias.trim() || addAlias.isPending} className="min-h-[44px] rounded-lg bg-primary px-3 font-semibold text-white disabled:bg-slate-300">Add</button>
-            </form>
-          </section>
-
-          {/* Details */}
+          {/* Everything a shopkeeper sets once and rarely touches again, folded away. */}
+          <details className="rounded-xl border border-slate-200">
+            <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between px-3 py-2">
+              <span className={sectionTitle}>Name, unit and other details</span>
+              <span className="text-slate-400">▾</span>
+            </summary>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               update.mutate();
             }}
-            className="rounded-xl border border-slate-200 p-3"
+            className="border-t border-slate-100 p-3"
           >
-            <p className={sectionTitle}>Details</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="col-span-2 text-xs text-slate-600">Name<input className={field} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
               <label className="col-span-2 text-xs text-slate-600">
@@ -452,8 +451,6 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
                 Low stock at ({form.unit || 'unit'})
                 <input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} />
               </label>
-              <label className="text-xs text-slate-600">Selling price (₹/{form.unit || 'unit'})<input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.sell_price} onChange={(e) => setForm({ ...form, sell_price: e.target.value })} /></label>
-              <label className="text-xs text-slate-600">Cost price (₹/{form.unit || 'unit'})<input className={field} type="number" inputMode="decimal" min={0} step="any" value={form.cost_price} placeholder="Optional" onChange={(e) => setForm({ ...form, cost_price: e.target.value })} /></label>
             </div>
             <button type="submit" disabled={update.isPending} className="mt-3 min-h-[48px] w-full rounded-lg bg-primary font-semibold text-white disabled:opacity-60">
               {update.isPending ? 'Saving…' : 'Save details'}
@@ -462,6 +459,7 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
               {product.is_active ? 'Deactivate product' : 'Activate product'}
             </button>
           </form>
+          </details>
         </div>
       </div>
     </div>

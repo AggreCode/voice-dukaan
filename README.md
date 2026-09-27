@@ -1,4 +1,4 @@
-# voice-dukan
+# Mo Dokan
 
 Voice-driven sales & inventory ledger for small shops and medicine stores in Odisha.
 The shopkeeper taps record and dictates a whole bill in Odia, Hindi or English, mixed is fine:
@@ -115,7 +115,7 @@ cd backend
 Prerequisites: Docker, Python 3.10+, Node 18+, ffmpeg.
 
 ```bash
-cd voice-dukan
+cd mo-dokan
 cp .env.example .env                      # then fill SARVAM_API_KEY and GEMINI_API_KEY
 
 # 1. database

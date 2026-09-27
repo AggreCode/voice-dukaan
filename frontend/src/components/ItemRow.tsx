@@ -24,13 +24,23 @@ interface Props {
   /** An existing inventory product this line probably means, offered instead of creating a duplicate. */
   suggestion?: PickedProduct | null;
   onUseSuggestion?: () => void;
+  /**
+   * Products this line could equally mean. A customer writes "biscuit" and the shop stocks nine of
+   * them; nobody but the shopkeeper can say which, so the candidates are offered here in one tap
+   * rather than hidden behind opening a picker. Choosing one also sets the line's price from it.
+   */
+  choices?: PickedProduct[];
+  onChoose?: (p: PickedProduct) => void;
 }
 
-export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice', newItemOk = false, suggestion = null, onUseSuggestion }: Props) {
+export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice', newItemOk = false, suggestion = null, onUseSuggestion, choices = [], onChoose }: Props) {
   const conf = item.original?.confidence ?? (item.product ? 1 : 0);
   const level = confidenceLevel(conf, !!item.product);
-  const needsReview = item.original?.needs_review ?? false;
+  const needsReviewRaw = item.original?.needs_review ?? false;
+  const needsReview = needsReviewRaw;
   const isNew = !item.product && newItemOk;
+  // Offer the choice whenever the line is still open to question, not only when nothing matched.
+  const showChoices = choices.length > 0 && !!onChoose && (!item.product || needsReviewRaw);
   // "Not in your inventory" is the whole point of a stock-in line, so it is not worth saying twice.
   const reasonText = isNew
     ? extractionReasonLabel((item.original?.reason ?? '').split(',').filter((r) => r.trim() !== 'not_in_catalog').join(','))
@@ -150,6 +160,51 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
           />
         </label>
       </div>
+
+      {/* Too general to answer for them: "biscuit", "soap", "oil". Show the shop's own products that
+          fit, with the price each would bill at, so one tap settles both the product and the price. */}
+      {showChoices && (
+        <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50/70 p-2">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+            Which one?
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {choices.slice(0, 4).map((c) => {
+              const chosen = item.product?.code === c.code;
+              const price = priceKind === 'cost' && c.cost_price ? c.cost_price : c.sell_price;
+              return (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChoose?.(c);
+                  }}
+                  className={cx(
+                    'min-h-[44px] max-w-full rounded-lg border px-2.5 py-1 text-left',
+                    chosen ? 'border-primary bg-primary text-white' : 'border-slate-300 bg-white',
+                  )}
+                >
+                  <span className="block truncate text-sm font-semibold">{c.name}</span>
+                  <span className={cx('block text-[11px]', chosen ? 'text-white/80' : 'text-slate-500')}>
+                    {fmtMoney(price)}/{c.unit} · {formatStock(c.stock_qty, c.unit)}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPickProduct();
+              }}
+              className="min-h-[44px] rounded-lg border border-dashed border-slate-400 px-3 text-xs font-semibold text-slate-600"
+            >
+              Other…
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* The wholesaler's wording is never the shop's, so a line that looks new may well be a product
           already on the shelf. Offer it before anything gets created twice. */}

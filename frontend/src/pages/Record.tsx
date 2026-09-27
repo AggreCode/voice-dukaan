@@ -180,7 +180,7 @@ export default function Record() {
     <div className="mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-md flex-col px-5 pb-6 pt-4">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Voice Dukan'}</h1>
+          <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Mo Dokan'}</h1>
           <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Speak · stock in' : 'Speak the bill'}</p>
         </div>
         {pending > 0 && (

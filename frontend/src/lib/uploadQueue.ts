@@ -33,6 +33,9 @@ export function isScanUpload(u: PendingUpload): u is PendingScanUpload {
   return u.kind === 'image';
 }
 
+// These database names are NOT the product name and must not be renamed with it. A phone that has
+// the app installed already holds recordings and photos waiting to upload under these names; renaming
+// the stores would orphan that queue and lose a shopkeeper's unsent bills.
 const queueStore = createStore('voice-dukan', 'upload-queue');
 const sessionStore = createStore('voice-dukan-sessions', 'sessions');
 
