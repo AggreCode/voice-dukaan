@@ -1,4 +1,4 @@
-import { ExtractedItem, ProductOut, ReviewProduct, VoiceSessionOut } from './types';
+import { ExtractedItem, ProductOut, ReviewProduct, VoiceMode, VoiceSessionOut } from './types';
 
 /** Common shape for a product chosen in review (from review_products or /api/products). */
 export interface PickedProduct {
@@ -103,4 +103,37 @@ export function newBlankItem(): ReviewItem {
 
 export function lineTotal(it: ReviewItem): number {
   return round2((Number(it.qty) || 0) * (Number(it.unit_price) || 0));
+}
+
+/**
+ * An empty bill, for typing one in by hand.
+ *
+ * Deliberately the same shape a recording or a photograph produces, so the screen that edits it is
+ * the same screen, with the same catalog lookup, the same prices and the same save. A bill typed by
+ * hand is not a lesser bill; it just arrived without a capture behind it.
+ */
+export function blankSession(mode: VoiceMode): VoiceSessionOut {
+  return {
+    session_id: '',
+    client_session_id: '',
+    status: 'extracted',
+    mode,
+    input_kind: 'voice',
+    transcript: null,
+    secondary_views: {},
+    transcript_language: null,
+    language_probability: null,
+    low_language_confidence: false,
+    image_count: null,
+    ocr_lines: [],
+    ocr_columns: [],
+    ocr_unclear_lines: [],
+    ocr_notes: '',
+    reader: null,
+    extraction: null,
+    review_products: [],
+    latencies: {},
+    error: null,
+    created_at: new Date().toISOString(),
+  };
 }

@@ -101,6 +101,27 @@ cd backend
 .venv/bin/python scripts/set_password.py --shop "Maa Tarini Medical" --username maa.tarini
 ```
 
+## Administration
+
+One console for whoever runs the service, at `/admin`, showing every shop with its owner, contact
+details, product and bill counts, sales and purchase totals, recent bills and low stock. It is
+**read-only**: nothing there writes to a shop, so support can answer a question about a ledger without
+being able to change the answer. It returns no password hash and no session token, and each call is
+logged with the administrator's username.
+
+The role is granted from a shell on the server, never through the API, so no bug in a form can hand
+somebody every shop:
+
+```bash
+cd backend
+.venv/bin/python scripts/make_admin.py --username biswajit     # grant
+.venv/bin/python scripts/make_admin.py --list                  # who has it
+.venv/bin/python scripts/make_admin.py --username biswajit --revoke
+```
+
+An administrator keeps their own shop and signs in normally; the console simply appears in Settings.
+To anyone else the endpoints answer 404 rather than 403, so the console does not announce itself.
+
 ## Keys you need
 
 | Key | Where | Cost |

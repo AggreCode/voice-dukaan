@@ -171,3 +171,65 @@ async def test_a_state_changing_request_needs_the_app_header():
         assert (await forged.get("/api/products")).status_code == 200, "reading is unaffected"
         r = await forged.post("/api/products", json={"name": "Injected", "unit": "kg"})
         assert r.status_code == 403
+
+
+async def test_the_admin_console_is_invisible_and_unreachable_to_an_ordinary_shop():
+    """It must not even admit to existing: a 404, not a 403, so nobody learns there is a console."""
+    if not await _db_ready():
+        pytest.skip("postgres not reachable on localhost:5433")
+    handle = uuid.uuid4().hex[:8]
+    async with _client() as c:
+        await c.post("/api/auth/register", json=_registration(handle))
+        assert (await c.get("/api/admin/shops")).status_code == 404
+        assert (await c.get(f"/api/admin/shops/{uuid.uuid4()}")).status_code == 404
+    # and signed out it is simply unauthorised
+    async with _client() as anon:
+        assert (await anon.get("/api/admin/shops")).status_code == 401
+
+
+async def test_an_admin_sees_every_shop_but_cannot_change_any_of_them():
+    if not await _db_ready():
+        pytest.skip("postgres not reachable on localhost:5433")
+    from sqlalchemy import select, update
+
+    from app.db import get_sessionmaker
+    from app.models import User
+
+    a_handle, b_handle = uuid.uuid4().hex[:8], uuid.uuid4().hex[:8]
+    async with _client() as shop_a, _client() as boss:
+        await shop_a.post("/api/auth/register", json=_registration(a_handle))
+        r = await shop_a.post("/api/products", json={"name": "Chini", "unit": "kg", "sell_price": 45})
+        assert r.status_code == 201, r.text
+        await shop_a.post("/api/transactions", json={
+            "voice_session_id": None, "type": "sale", "payment_mode": "cash", "customer_name": "Ramesh",
+            "notes": None, "deleted_item_indexes": [], "llm_intent": None,
+            "items": [{"item_index": None, "product_code": "p001", "qty": 2, "unit": "kg",
+                       "unit_price": 45, "spoken_span": None, "llm_product_code": None,
+                       "llm_confidence": None}]})
+
+        reg = _registration(b_handle)
+        await boss.post("/api/auth/register", json=reg)
+        async with get_sessionmaker()() as db:
+            await db.execute(update(User).where(User.username == reg["username"]).values(role="admin"))
+            await db.commit()
+
+        overview = (await boss.get("/api/admin/shops")).json()
+        assert overview["shops"] >= 2
+        names = {row["name"]: row for row in overview["rows"]}
+        mine = names[f"t-{a_handle}"]
+        assert mine["products"] == 1 and mine["bills"] == 1 and mine["sales_total"] == 90.0
+        assert mine["owner_username"] == f"u{a_handle}"
+        assert "password" not in (await boss.get("/api/admin/shops")).text.lower()
+
+        detail = (await boss.get(f"/api/admin/shops/{mine['id']}")).json()
+        assert [u["username"] for u in detail["users"]] == [f"u{a_handle}"]
+        assert detail["recent_bills"][0]["customer_name"] == "Ramesh"
+        assert detail["recent_bills"][0]["items"] == 1
+        assert all("hash" not in key for user in detail["users"] for key in user)
+
+        # the console is read-only: an admin still only writes to their own shop
+        r = await boss.post("/api/products", json={"name": "Not in shop A", "unit": "kg"})
+        assert r.status_code == 201
+        assert [p["name"] for p in (await shop_a.get("/api/products")).json()] == ["Chini"]
+        assert (await boss.get("/api/shops/me")).json()["name"] == f"t-{b_handle}"
+        assert select is not None

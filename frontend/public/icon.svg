@@ -1,7 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="96" fill="#0f766e"/>
-  <rect x="196" y="96" width="120" height="220" rx="60" fill="#ffffff"/>
-  <path d="M146 250a110 110 0 0 0 220 0" fill="none" stroke="#ffffff" stroke-width="32" stroke-linecap="round"/>
-  <rect x="240" y="360" width="32" height="56" fill="#ffffff"/>
-  <rect x="180" y="410" width="152" height="32" rx="16" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Mo Dokan">
+  <!-- Maskable-safe: everything sits inside the middle 80%, so a round or squircle mask never clips it. -->
+  <rect width="64" height="64" rx="14" fill="#0f766e"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">
+    <!-- awning -->
+    <path d="M13 24h38l-3.5-7.5a3 3 0 0 0-2.7-1.7H19.2a3 3 0 0 0-2.7 1.7L13 24Z" fill="#ffffff" stroke="none"/>
+    <path d="M13 24h38" />
+    <!-- awning scallops, the bit that reads as "shop" even at 16px -->
+    <path d="M13 24a4.2 4.2 0 0 0 8.4 0 4.2 4.2 0 0 0 8.4 0 4.2 4.2 0 0 0 8.4 0 4.2 4.2 0 0 0 8.4 0 4.2 4.2 0 0 0 4.4 0"
+          fill="#0f766e" stroke="#ffffff"/>
+    <!-- shop body -->
+    <path d="M16.5 28.5V49a2 2 0 0 0 2 2h27a2 2 0 0 0 2-2V28.5"/>
+    <!-- doorway -->
+    <path d="M27 51V36.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2V51"/>
+  </g>
 </svg>

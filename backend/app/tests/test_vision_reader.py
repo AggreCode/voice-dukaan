@@ -32,8 +32,8 @@ def _reply(payload: dict, *, finish: str = "STOP") -> dict:
 
 def _ok_payload(lines: list[str], unclear: list[str] | None = None,
                 columns: list[str] | None = None) -> dict:
-    return ScanRead(lines=lines, columns=columns or [], unclear_lines=unclear or [], script="odia",
-                    notes="").model_dump()
+    return ScanRead(lines=lines, columns=columns or [], columns_inferred=False,
+                    unclear_lines=unclear or [], script="odia", notes="").model_dump()
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -67,7 +67,8 @@ async def test_images_are_sent_inline_with_the_prompt_last():
     schema = seen["body"]["generationConfig"]["responseJsonSchema"]["properties"]
     assert schema["lines"] and schema["columns"]
     # a table must come back with its headings, or the next stage cannot tell a rate from a quantity
-    assert "columns" in parts[2]["text"] and "including every number in the row" in parts[2]["text"]
+    assert "columns" in parts[2]["text"] and "including every number" in parts[2]["text"]
+    assert "columns_inferred" in parts[2]["text"], "a table with no header row must still be reported"
 
 
 async def test_blank_lines_are_dropped_and_unclear_lines_kept():
@@ -82,8 +83,8 @@ async def test_blank_lines_are_dropped_and_unclear_lines_kept():
 
 async def test_a_photo_with_no_list_reads_as_zero_lines_not_an_error():
     def handler(request: httpx.Request) -> httpx.Response:
-        payload = ScanRead(lines=[], columns=[], unclear_lines=[], script="latin",
-                           notes="A photo of a shelf.").model_dump()
+        payload = ScanRead(lines=[], columns=[], columns_inferred=False, unclear_lines=[],
+                           script="latin", notes="A photo of a shelf.").model_dump()
         return httpx.Response(200, json=_reply(payload))
 
     reader = GeminiVisionReader(api_key="k", client=_client(handler))

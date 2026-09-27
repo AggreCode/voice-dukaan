@@ -18,9 +18,19 @@ const STAGES: { at: number; label: string }[] = [
   { at: 7000, label: 'Understanding…' },
 ];
 
-const COPY: Record<VoiceMode, { headline: string; example: string; hint: string }> = {
-  sale: { headline: 'Speak the bill', example: 'Paracetamol dasa gota, Crocin dui patta', hint: 'Speak items, qty and price' },
-  stock_in: { headline: 'Speak the stock you received', example: 'Paracetamol 10 strips, ORS 5 packets', hint: 'Speak items, qty and cost' },
+const COPY: Record<VoiceMode, { tab: string; headline: string; example: string; hint: string }> = {
+  sale: {
+    tab: 'Selling',
+    headline: 'Speak the bill',
+    example: 'Paracetamol dasa gota, Crocin dui patta',
+    hint: 'Speak items, qty and price',
+  },
+  stock_in: {
+    tab: 'Buying',
+    headline: 'Speak the stock you received',
+    example: 'Paracetamol 10 strips, ORS 5 packets',
+    hint: 'Speak items, qty and cost',
+  },
 };
 
 function parseMode(v: string | null | undefined): VoiceMode | null {
@@ -31,9 +41,11 @@ export default function Record() {
   const nav = useNavigate();
   const toast = useToast();
   const pending = usePendingCount();
-  const [searchParams] = useSearchParams();
-  // Sales are the default. Stock-in is reached from Inventory, so this screen needs no switch.
+  const [searchParams, setSearchParams] = useSearchParams();
   const mode: VoiceMode = parseMode(searchParams.get('mode')) ?? 'sale';
+  // Same switch the scan screen has, in the same place: the three ways of starting a bill should not
+  // each have their own idea of how selling and buying are chosen.
+  const setMode = (m: VoiceMode) => setSearchParams(m === 'sale' ? {} : { mode: m }, { replace: true });
   /** Mode captured when the current recording started. */
   const recModeRef = useRef<VoiceMode>(mode);
 
@@ -181,7 +193,7 @@ export default function Record() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Mo Dokan'}</h1>
-          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Speak · stock in' : 'Speak the bill'}</p>
+          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Speak · buying' : 'Speak · selling'}</p>
         </div>
         {pending > 0 && (
           <button
@@ -196,14 +208,23 @@ export default function Record() {
         )}
       </header>
 
-      {mode === 'stock_in' && (
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary-dark">
-          <span className="font-semibold">Adding stock</span>
-          <button type="button" onClick={() => nav('/', { replace: true })} className="min-h-[44px] px-2 font-semibold underline">
-            Bill a sale instead
+      <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+        {(['sale', 'stock_in'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            aria-pressed={mode === m}
+            disabled={recording || phase === 'uploading'}
+            className={cx(
+              'min-h-[44px] rounded-lg text-sm font-semibold disabled:opacity-60',
+              mode === m ? 'bg-white text-primary shadow' : 'text-slate-600',
+            )}
+          >
+            {COPY[m].tab}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
       <h2 className="mt-4 text-center text-xl font-bold text-slate-800">{copy.headline}</h2>
 
       {!support.ok && (

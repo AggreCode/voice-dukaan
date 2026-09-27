@@ -27,7 +27,8 @@ class ReadResult:
     provider: str
     model: str
     lines: list[str]
-    columns: list[str] = field(default_factory=list)  # table headings in order, empty when not a table
+    columns: list[str] = field(default_factory=list)  # what each column holds, in order; empty if not a table
+    columns_inferred: bool = False  # true when no header row was written and the columns were worked out
     script: str | None = None  # odia | devanagari | latin | mixed, as reported by the reader
     notes: str = ""
     latency_ms: int = 0

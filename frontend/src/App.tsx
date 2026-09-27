@@ -8,6 +8,9 @@ import { MeOut } from './lib/types';
 import { useSlowHint } from './lib/useSlowHint';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Admin from './pages/Admin';
+import Home from './pages/Home';
+import Manual from './pages/Manual';
 import Record from './pages/Record';
 import Scan from './pages/Scan';
 import Review from './pages/Review';
@@ -86,12 +89,16 @@ export default function App() {
   return (
     <div className="min-h-screen pb-[calc(64px+env(safe-area-inset-bottom))]">
       <Routes location={loc}>
-        <Route path="/" element={<Record />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/record" element={<Record />} />
         <Route path="/scan" element={<Scan />} />
+        <Route path="/manual" element={<Manual />} />
         <Route path="/review/:sessionId" element={<Review />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/products" element={<Products />} />
         <Route path="/settings" element={<Settings />} />
+        {/* The server answers this only for an admin account; everyone else gets a 404 from the API. */}
+        <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <BottomNav />

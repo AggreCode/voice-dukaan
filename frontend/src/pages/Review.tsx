@@ -80,9 +80,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto w-full max-w-md px-4 pb-6 pt-4">{children}</div>;
 }
 
-type SavedInfo = { id: string; total: number; type: 'sale' | 'purchase'; count: number };
+export type SavedInfo = { id: string; total: number; type: 'sale' | 'purchase'; count: number };
 
-function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (r: SavedInfo) => void }) {
+export function ReviewForm({
+  session,
+  onSaved,
+  backTo,
+}: {
+  session: VoiceSessionOut;
+  onSaved: (r: SavedInfo) => void;
+  /** Where the "back" link goes. Defaults to the way this bill was captured. */
+  backTo?: { to: string; label: string };
+}) {
   const toast = useToast();
   const ext = session.extraction;
   const isStockIn = session.mode === 'stock_in';
@@ -241,7 +250,7 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
         setItems(rows);
       }
       const body: TransactionIn = {
-        voice_session_id: session.session_id,
+        voice_session_id: session.session_id || null,
         type: intent,
         items: rows.map((i) => ({
           item_index: i.item_index,
@@ -280,15 +289,16 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
   // "Capture again" goes back the way this bill came in, keeping the sale/stock-in mode.
   const againTo = fromPhoto
     ? isStockIn ? '/scan?mode=stock_in' : '/scan'
-    : isStockIn ? '/?mode=stock_in' : '/';
+    : isStockIn ? '/record?mode=stock_in' : '/record';
   const againLabel = fromPhoto ? 'Photograph again' : 'Record again';
+  const back = backTo ?? { to: againTo, label: fromPhoto ? 'Scan' : 'Speak' };
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-56 pt-4">
       <header className="mb-3 flex items-center justify-between">
         <h1 className="text-lg font-bold text-primary-dark">{intent === 'purchase' ? 'Review stock in' : 'Review bill'}</h1>
-        <Link to={againTo} className="min-h-[44px] rounded-lg px-2 py-2 text-sm font-medium text-primary">
-          ← {fromPhoto ? 'Scan' : 'Speak'}
+        <Link to={back.to} className="min-h-[44px] rounded-lg px-2 py-2 text-sm font-medium text-primary">
+          ← {back.label}
         </Link>
       </header>
 

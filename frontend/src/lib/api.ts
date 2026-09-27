@@ -1,6 +1,6 @@
 import { auth } from './auth';
 import {
-  HealthOut, MatchOut, MeOut, ProductIn, ProductOut, ProductPatch, RegisterIn, ShopOut, ShopType, StockAdjustIn,
+  AdminOverview, AdminShopDetail, HealthOut, MatchOut, MeOut, ProductIn, ProductOut, ProductPatch, RegisterIn, ShopOut, ShopType, StockAdjustIn,
   StockCountIn, StockMovementOut, TransactionIn, TransactionOut, VoiceMode, VoiceSessionOut,
   normalizeProduct, normalizeReviewProduct, normalizeSession, normalizeStockMovement, normalizeTransaction, num,
 } from './types';
@@ -124,6 +124,12 @@ export const api = {
       }),
     changePassword: (current_password: string, new_password: string) =>
       request<{ ok: boolean }>('/api/auth/password', { method: 'POST', body: { current_password, new_password } }),
+  },
+
+  /** Read-only, and only answers an account with the admin role. Everyone else gets a 404. */
+  admin: {
+    shops: () => request<AdminOverview>('/api/admin/shops'),
+    shop: (id: string) => request<AdminShopDetail>(`/api/admin/shops/${id}`),
   },
 
   shops: {

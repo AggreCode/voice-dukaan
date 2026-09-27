@@ -2,11 +2,11 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { cx } from '../lib/utils';
 import { usePendingCount } from '../lib/uploadQueue';
 
-// Speaking and photographing a list are the two ways to start a bill, so both are one tap from
-// anywhere. Everything else the shop does follows after them.
+// One tab to start a bill, whichever of the three ways it starts. Speaking, photographing and typing
+// are choices on that screen rather than competing tabs, so the bar stays readable on a small phone
+// and none of the three looks like the poor relation.
 const tabs = [
-  { to: '/', label: 'Speak', icon: MicIcon, also: [] as string[] },
-  { to: '/scan', label: 'Scan', icon: CameraIcon, also: [] as string[] },
+  { to: '/', label: 'Bill', icon: ShopIcon, also: ['/record', '/scan', '/manual'] },
   { to: '/ledger', label: 'Ledger', icon: LedgerIcon, also: [] as string[] },
   { to: '/products', label: 'Inventory', icon: BoxIcon, also: [] as string[] },
   { to: '/settings', label: 'Settings', icon: GearIcon, also: [] as string[] },
@@ -17,7 +17,7 @@ export default function BottomNav() {
   const { pathname } = useLocation();
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
-      <ul className="mx-auto grid max-w-md grid-cols-5">
+      <ul className="mx-auto grid max-w-md grid-cols-4">
         {tabs.map((t) => (
           <li key={t.to}>
             <NavLink
@@ -25,7 +25,7 @@ export default function BottomNav() {
               end={t.to === '/'}
               className={({ isActive }) =>
                 cx(
-                  'relative flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-[11px] font-medium',
+                  'relative flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-xs font-medium',
                   isActive || t.also.includes(pathname) ? 'text-primary' : 'text-slate-500',
                 )
               }
@@ -43,19 +43,11 @@ export default function BottomNav() {
   );
 }
 
-function MicIcon({ className }: { className?: string }) {
+function ShopIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
-    </svg>
-  );
-}
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2a2 2 0 0 0 1.7-1l.5-.8a1 1 0 0 1 .85-.5h4.5a1 1 0 0 1 .85.5l.5.8a2 2 0 0 0 1.7 1h1.2A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-9z" />
-      <circle cx="12" cy="13" r="3.5" />
+      <path d="M4 9h16l-1.4-3a2 2 0 0 0-1.8-1.1H7.2A2 2 0 0 0 5.4 6L4 9z" />
+      <path d="M5.5 10.5V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-8.5M10 20v-5.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V20" />
     </svg>
   );
 }

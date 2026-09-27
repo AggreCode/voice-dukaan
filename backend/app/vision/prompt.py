@@ -62,8 +62,11 @@ def build_reader_message(*, hints: list[str], image_count: int) -> str:
     in the next stage, against the full catalog."""
     lines = [
         f"{image_count} photo(s) of one list." if image_count > 1 else "One photo of a list.",
-        "If it is a table, report its headings in `columns` and each row's cells in one line, "
-        "separated by \" | \", including every number in the row.",
+        "If it is a table, report what each column holds in `columns` using the English words "
+        "(sl_no, product, qty, unit, rate, amount, batch, expiry, other), whatever language the page "
+        "is in, and put each row's cells in one line separated by \" | \", including every number. "
+        "Set `columns_inferred` true when no header row was written and you worked the columns out "
+        "from the values.",
     ]
     if hints:
         lines += [

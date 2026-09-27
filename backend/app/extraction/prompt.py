@@ -111,6 +111,12 @@ darjan -> dozen ; gathi, bandal -> bundle
   If a row has both a rate and an amount, take the rate. If a row has only an amount and a quantity,
   set `unit_price` to amount / quantity and add reason "price_from_total" so it gets checked.
 - Never carry a price sideways from one row to another, and never invent one to fill a column.
+- A column named `sl_no` is the row number. Never read it as a quantity, a price or part of the name.
+- A number inside brackets in the product name is the pack size, not the quantity: "Eggs (6 pcs)" with
+  a qty column reading 1 is ONE dozen, not six. The qty column always wins over a number in the name.
+- When the COLUMNS line says they were worked out from the values rather than written on the page, the
+  layout is a guess: keep the item, but set `needs_review` true with reason "columns_inferred" on any
+  row where you take a `unit_price` from it, so the shopkeeper checks the figure before saving.
 - With no price column and no currency mark, leave `unit_price` null. A customer's handwritten list
   usually has no prices at all, and a bare trailing number there is a QUANTITY, not a price.
 - `spoken_span` for a table row is the WHOLE row as read, numbers included, so the shopkeeper sees the
@@ -146,7 +152,9 @@ def build_user_message(
         lines.append(f"INPUT IS WRITTEN: lines read off a photographed list by {shop_ctx.reader or 'an OCR model'}, "
                      "one line per item, joined with \" | \". Apply the WRITTEN rules.")
         if shop_ctx.columns:
-            lines.append("COLUMNS (in this order, cells separated by \" | \" on every line below): "
+            source = ("worked out from the values, NOT written on the page"
+                      if shop_ctx.columns_inferred else "as written on the page")
+            lines.append(f"COLUMNS ({source}; cells separated by \" | \" on every line below): "
                          + " | ".join(shop_ctx.columns))
         lines.append("WRITTEN LINES:")
         lines.append(transcript.strip() or "(empty)")

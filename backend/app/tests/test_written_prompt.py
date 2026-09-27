@@ -36,9 +36,25 @@ def test_column_headings_reach_the_prompt_so_a_rate_is_not_read_as_a_quantity():
                       reader="gemini:vision", input_mode="stock_in",
                       columns=["Product", "Qty", "Unit", "Rate"])
     msg = build_user_message("Sugar | 2 | kg | 45", {}, ctx)
-    assert "COLUMNS (in this order" in msg
+    assert "COLUMNS (as written on the page" in msg
     assert "Product | Qty | Unit | Rate" in msg
     assert "STOCK IN" in msg
+
+
+def test_columns_worked_out_from_the_values_are_flagged_as_a_guess():
+    """Plenty of lists have no header row at all. The layout is then a reading, not a fact, and the
+    prompt has to say so or a guessed rate column looks as solid as a written one."""
+    ctx = ShopContext(shop_type="kirana", date_iso="2026-09-27", input_source="written",
+                      columns=["product", "qty", "unit", "rate"], columns_inferred=True)
+    msg = build_user_message("Chini | 2 | kg | 45", {}, ctx)
+    assert "NOT written on the page" in msg
+    assert "columns_inferred" in STATIC_RULES
+
+
+def test_the_rules_cover_a_serial_number_column_and_a_pack_size_in_the_name():
+    # Both are on nearly every handwritten list, and both look exactly like a quantity.
+    assert "`sl_no` is the row number" in STATIC_RULES
+    assert "Eggs (6 pcs)" in STATIC_RULES
 
 
 def test_a_list_without_columns_says_nothing_about_them():

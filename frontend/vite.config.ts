@@ -19,6 +19,8 @@ export default defineConfig({
         background_color: '#f8fafc',
         display: 'standalone',
         start_url: '/',
+        // One SVG for both purposes: its artwork stays inside the middle 80% of the canvas, so a
+        // round or squircle mask on Android never clips the shop front.
         icons: [
           { src: '/icon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
           { src: '/icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },

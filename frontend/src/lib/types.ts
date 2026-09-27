@@ -350,3 +350,60 @@ export function normalizeSession(s: VoiceSessionOut): VoiceSessionOut {
       : null,
   };
 }
+
+// ---- admin console (whoever runs the service, not a shopkeeper) ----
+export interface AdminShopRow {
+  id: string;
+  name: string;
+  type: string;
+  created_at: string;
+  mobile: string | null;
+  whatsapp: string | null;
+  gst_number: string | null;
+  address: string | null;
+  owner: string | null;
+  owner_username: string | null;
+  users: number;
+  products: number;
+  bills: number;
+  sales_total: number;
+  purchases_total: number;
+  captures: number;
+  last_activity_at: string | null;
+}
+
+export interface AdminOverview {
+  shops: number;
+  users: number;
+  bills: number;
+  products: number;
+  rows: AdminShopRow[];
+}
+
+export interface AdminUser {
+  id: string;
+  username: string | null;
+  display_name: string;
+  role: string;
+  mobile: string | null;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface AdminBill {
+  id: string;
+  type: string;
+  total_amount: number;
+  status: string;
+  customer_name: string | null;
+  payment_mode: string;
+  items: number;
+  created_at: string;
+}
+
+export interface AdminShopDetail {
+  shop: AdminShopRow;
+  users: AdminUser[];
+  recent_bills: AdminBill[];
+  low_stock: string[];
+}

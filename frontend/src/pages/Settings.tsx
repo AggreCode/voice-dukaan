@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { auth } from '../lib/auth';
@@ -37,6 +38,9 @@ export default function Settings() {
   });
 
   const me = useQuery({ queryKey: ['shops', 'me'], queryFn: api.shops.me, retry: 1 });
+  // Already cached by the app's front door, so this costs nothing and tells us whether to show the
+  // administration link at all.
+  const account = useQuery({ queryKey: ['me'], queryFn: api.auth.me, staleTime: 5 * 60_000 });
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 30_000, retry: 1 });
 
   const shopName = me.data?.name ?? auth.getShopName() ?? '—';
@@ -120,6 +124,14 @@ export default function Settings() {
       </section>
 
       <section className="space-y-2">
+        {account.data?.user.role === 'admin' && (
+          <Link
+            to="/admin"
+            className="flex min-h-[48px] items-center justify-center rounded-xl border border-primary bg-primary-light/40 font-semibold text-primary-dark"
+          >
+            All shops (admin)
+          </Link>
+        )}
         <a
           href="/docs"
           target="_blank"

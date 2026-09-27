@@ -57,7 +57,7 @@ export default function Products() {
       <div className="mb-3 flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-primary-dark">Inventory</h1>
         <div className="flex gap-2">
-          <Link to="/?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
+          <Link to="/record?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
             By voice
           </Link>
           <Link to="/scan?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
@@ -263,19 +263,40 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
     sell !== Number(product.sell_price) || numOrNull(form.cost_price) !== (product.cost_price ?? null);
 
   return (
+    // 88dvh, not 94vh: on a phone `vh` counts the space behind the address bar, and the on-screen
+    // keyboard shrinks the viewport further, so the top of the sheet -- and the only way out of it --
+    // was pushed above the glass. `dvh` follows the space that is actually visible.
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
-      <div className="flex max-h-[94vh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className="flex items-start justify-between gap-2 px-4 pt-3">
-          <div className="min-w-0 pt-2">
-            <h2 className="truncate text-base font-semibold">
-              {product.name} <span className="text-xs font-normal text-slate-400">{product.code}</span>
-            </h2>
-            {product.local_name && <p className="truncate text-sm text-slate-500">{product.local_name}</p>}
+      <div
+        className="flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Sticky, so the way out stays on screen however far the sheet is scrolled. */}
+        <div className="sticky top-0 z-10 rounded-t-2xl border-b border-slate-100 bg-white">
+          <div className="flex justify-center pt-2" aria-hidden>
+            <span className="h-1 w-10 rounded-full bg-slate-300" />
           </div>
-          <button type="button" onClick={onClose} className="min-h-[44px] min-w-[44px] shrink-0 rounded-full text-2xl leading-none text-slate-500" aria-label="Close">×</button>
+          <div className="flex items-start justify-between gap-2 px-4 pb-2 pt-1.5">
+            <div className="min-w-0 pt-1">
+              <h2 className="truncate text-base font-semibold">
+                {product.name} <span className="text-xs font-normal text-slate-400">{product.code}</span>
+              </h2>
+              {product.local_name && <p className="truncate text-sm text-slate-500">{product.local_name}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-2xl leading-none text-slate-600 active:bg-slate-200"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4 pt-3">
           {/* Price first. It is what a shopkeeper opens a product for: the wholesaler's rate is on the
               bill, the margin is theirs to decide, and neither should be behind a scroll. */}
           <form
@@ -301,7 +322,6 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
                   inputMode="decimal"
                   min={0}
                   step="any"
-                  autoFocus
                   value={form.sell_price}
                   onChange={(e) => setForm({ ...form, sell_price: e.target.value })}
                 />
@@ -460,6 +480,15 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
             </button>
           </form>
           </details>
+
+          {/* A phone is held at the bottom. Reaching the × at the top needs a second hand. */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="mb-[max(env(safe-area-inset-bottom),8px)] min-h-[52px] w-full rounded-xl border border-slate-300 bg-white font-semibold text-slate-700"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
