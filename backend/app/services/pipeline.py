@@ -25,7 +25,7 @@ from app.extraction.base import ExtractionOutcome, Extractor, ShopContext
 from app.extraction.postprocess import apply_guards
 from app.models import Shop, VoiceSession
 from app.services import catalog as catalog_svc
-from app.services.fuzzy import fill_unresolved
+from app.services.fuzzy import fill_unresolved, verify_matches
 from app.services.shadow import run_shadow
 from app.stt.base import STTResult
 from app.stt.sarvam import SarvamSaarasProvider
@@ -249,6 +249,9 @@ async def process_image_session(
         else:
             guarded = apply_guards(outcome.output, transcript=read.text, catalog=snap,
                                    confidence_floor=s.REVIEW_CONFIDENCE_FLOOR)
+            if s.FUZZY_VERIFY:
+                # Audit first: a wrong match must become an empty line before anything tries to fill it.
+                guarded = verify_matches(guarded, snap, min_score=s.FUZZY_MIN_MATCH_SCORE)
             if s.FUZZY_FILL:
                 # Written input only for now. Speech would benefit too, but it needs its own eval run
                 # before a phonetic fallback is allowed near the voice path's measured accuracy.

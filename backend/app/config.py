@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     GEMINI_THINKING_LEVEL: str = "minimal"  # minimal | low | medium | high
 
+    # --- sessions and the login cookie ---
+    SESSION_DAYS: int = 30          # "keep me signed in on this device"
+    SESSION_SHORT_DAYS: int = 1     # when they decline, the cookie dies with the browser anyway
+    # A cookie marked Secure is refused over plain HTTP. Browsers make an exception for localhost, so
+    # leave this on everywhere except when testing over a LAN IP such as http://192.168.1.5:5173.
+    COOKIE_SECURE: bool = True
+
     # --- reading a photographed list (the scan path) ---
     # gemini = the same key and REST surface the extractor uses, no new dependency | mock = zero cost.
     OCR_MODE: str = "gemini"
@@ -88,6 +95,13 @@ class Settings(BaseSettings):
     FUZZY_FILL: bool = True
     FUZZY_MIN_SCORE: float = 0.72
     FUZZY_MIN_GAP: float = 0.08  # below this the two best candidates are offered instead of one chosen
+    # Audit of a match the model made: below this the written line plainly is not that product, so the
+    # match is dropped and the raw line is shown instead of a confident wrong answer. Measured on real
+    # lines: genuine matches score 0.86-1.0, coincidences of letters 0.35-0.50.
+    FUZZY_VERIFY: bool = True
+    FUZZY_MIN_MATCH_SCORE: float = 0.6
+    # Weaker floor used only to SUGGEST an existing product when stocking in, never to choose one.
+    FUZZY_SUGGEST_SCORE: float = 0.5
 
     # extraction guards
     REVIEW_CONFIDENCE_FLOOR: float = 0.75

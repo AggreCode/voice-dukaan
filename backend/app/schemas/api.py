@@ -102,6 +102,21 @@ class ReviewProduct(BaseModel):
     cost_price: Decimal | None = None
 
 
+class MatchCandidate(ReviewProduct):
+    """An existing product that a written line might mean, with how well it fits."""
+
+    score: float
+
+
+class MatchIn(BaseModel):
+    names: list[str]
+
+
+class MatchOut(BaseModel):
+    name: str
+    candidates: list[MatchCandidate]
+
+
 class VoiceSessionOut(BaseModel):
     """One capture: a dictated bill or a photographed list. `input_kind` says which, and `transcript`
     carries whichever text was produced, so the review screen has a single shape to render."""
@@ -185,9 +200,17 @@ class ShopOut(BaseModel):
     type: str
     default_language: str
     catalog_version: int
+    gst_number: str | None = None
+    mobile: str | None = None
+    whatsapp: str | None = None
+    address: str | None = None
 
 
 class ShopIn(BaseModel):
     name: str
     type: str = "general"
     default_language: str = "od-IN"
+    gst_number: str | None = None
+    mobile: str | None = None
+    whatsapp: str | None = None
+    address: str | None = None

@@ -25,7 +25,7 @@ async def _fresh_engine():
                     with s as (select id from shops where name like 't-%' or name = 'silent')
                     delete from corrections where shop_id in (select id from s)"""))
                 for tbl in ("stock_ledger", "transaction_items", "transactions", "voice_sessions",
-                            "product_aliases", "products", "users", "shops"):
+                            "product_aliases", "products", "sessions", "users", "shops"):
                     sub = "transaction_id in (select id from transactions where shop_id in (select id from s))" \
                         if tbl == "transaction_items" else \
                         "product_id in (select id from products where shop_id in (select id from s))" \

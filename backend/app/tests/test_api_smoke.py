@@ -106,11 +106,15 @@ async def test_full_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(voice_api, "primary_provider", lambda: fake_stt)
     monkeypatch.setattr(voice_api, "get_extractor", lambda: fake_llm)
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        r = await c.post("/api/shops", json={"name": f"t-{uuid.uuid4().hex[:6]}", "type": "medical"})
-        assert r.status_code == 200, r.text
-        shop_id = r.json()["shop"]["id"]
-        h = {"X-Shop-Id": shop_id}
+    # Every request carries the app header; the login cookie rides in the client's own jar.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+                           headers={"x-vd-app": "1"}) as c:
+        handle = uuid.uuid4().hex[:8]
+        r = await c.post("/api/auth/register", json={
+            "name": f"t-{handle}", "type": "medical", "mobile": "9876543210",
+            "username": f"u{handle}", "password": "a-good-password"})
+        assert r.status_code == 201, r.text
+        h: dict[str, str] = {}
 
         for name in ("Paracetamol 500mg", "Crocin 500"):
             r = await c.post("/api/products", headers=h, json={

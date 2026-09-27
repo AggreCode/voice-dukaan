@@ -74,6 +74,13 @@ def fold(text: str) -> str:
     return _REPEAT.sub(r"\1", s)  # 'paaraa' -> 'para', and any doubled consonant
 
 
+def fold_words(text: str) -> list[str]:
+    """The folded words of a phrase, so a term can be looked for as a WHOLE word inside a line.
+    Plain substring matching is far too loose here: "oil" sits inside "boiled", and folded spellings
+    have no spaces left to stop it."""
+    return [w for w in (fold(part) for part in re.split(r"[^\w\u0900-\u0DFF]+", text or "")) if w]
+
+
 def skeleton(text: str) -> str:
     """Consonants only. Vowels are what transliteration gets wrong most, so a second score ignores
     them: 'parasitamal' and 'paracetamol' share 'prstml' / 'prctml'."""
@@ -103,6 +110,14 @@ def score_term(query: str, term: str) -> float:
         best = 0.9 if len(t) >= 4 else 0.8 if len(t) == 3 else 0.5
     if len(q) >= 4 and q in t:
         best = max(best, 0.82)
+    # Every word of the product's name appears in the line: "Rice" inside "Rice (Premium) 25 kg bag".
+    # This is what separates a real partial match from a coincidence of letters, which the character
+    # ratios below are far too generous about ("Toor Dal" scored 0.50 against "Tomato Sauce").
+    term_words, query_words = set(fold_words(term)), set(fold_words(query))
+    if term_words and term_words <= query_words:
+        best = max(best, 0.9)
+    elif query_words and query_words <= term_words and len("".join(query_words)) >= 4:
+        best = max(best, 0.86)
     best = max(best, _ratio(q, t))
     if len(q) >= 3:
         best = max(best, _ratio(skeleton(query), skeleton(term)) * 0.95)
@@ -125,6 +140,57 @@ def rank(query: str, catalog: CatalogSnapshot, *, limit: int = 4) -> list[tuple[
             scored.append((code, round(best, 4)))
     scored.sort(key=lambda x: (-x[1], x[0]))
     return scored[:limit]
+
+
+def best_score(text: str, catalog: CatalogSnapshot, code: str) -> float:
+    """How well a written line fits ONE named product. Used to audit a match, not to make one."""
+    product = catalog.products.get(code)
+    if product is None:
+        return 0.0
+    cleaned = strip_quantity_words(text) or text
+    terms = [product.name, *(product.name.split() if " " in product.name else []), *product.aliases,
+             *product.learned]
+    if product.local_name:
+        terms.append(product.local_name)
+    return max((score_term(cleaned, t) for t in terms if t), default=0.0)
+
+
+def verify_matches(
+    bill: BillExtraction,
+    catalog: CatalogSnapshot,
+    *,
+    min_score: float = 0.6,
+) -> BillExtraction:
+    """Drop a match that the written line does not actually support.
+
+    A language model asked to pick from a list will pick from the list. Offered "Tomato Sauce" when
+    the paper says "Toor Dal", it may still answer with the nearest shelf-mate, and the shopkeeper
+    then sees a confident wrong product instead of a line to deal with. So every match is audited
+    against the words that were actually written: if they do not resemble the product at all, the
+    match is removed and the raw line is handed back for the shopkeeper to resolve.
+
+    Only the written path uses this. Speech is phonetic and deliberately scores differently.
+    """
+    for item in bill.items:
+        if item.product_id is None:
+            continue
+        evidence = item.spoken_span or item.product_name_guess
+        if not evidence:
+            continue
+        score = max(best_score(evidence, catalog, item.product_id),
+                    best_score(item.product_name_guess, catalog, item.product_id)
+                    if item.product_name_guess else 0.0)
+        if score >= min_score:
+            continue
+        item.alternatives = [Alternative(product_id=c, confidence=s)
+                             for c, s in rank(evidence, catalog, limit=3) if s >= min_score]
+        item.product_id = None
+        item.confidence = min(item.confidence, 0.3)
+        item.needs_review = True
+        item.reason = f"{item.reason},weak_match" if item.reason else "weak_match"
+        if not item.product_name_guess:
+            item.product_name_guess = evidence
+    return bill
 
 
 def fill_unresolved(

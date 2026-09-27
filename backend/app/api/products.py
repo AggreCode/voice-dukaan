@@ -10,11 +10,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_shop
+from app.config import get_settings
 from app.db import get_session
 from app.models import Product, ProductAlias, Shop, StockLedger, TransactionItem
 from app.schemas.api import (
     STOCK_REASONS,
     AliasIn,
+    MatchCandidate,
+    MatchIn,
+    MatchOut,
     ProductIn,
     ProductOut,
     ProductPatch,
@@ -23,6 +27,7 @@ from app.schemas.api import (
     StockMovementOut,
 )
 from app.services import catalog as catalog_svc
+from app.services.fuzzy import rank
 from app.services.ledger import apply_stock_movement
 from app.services.locale import pick_local_name
 
@@ -222,3 +227,34 @@ async def import_csv(file: UploadFile = File(...), shop: Shop = Depends(current_
     await _bump(shop)
     await session.commit()
     return {"created": created, "updated": updated}
+
+
+@router.post("/match", response_model=list[MatchOut])
+async def match_names(body: MatchIn, shop: Shop = Depends(current_shop),
+                      session: AsyncSession = Depends(get_session)):
+    """Existing products a written line might mean, best first.
+
+    Stocking in must ADD to the product already on the shelf, not create a second copy of it under
+    whatever the wholesaler chose to call it that week. The names on a bill rarely match the shop's own
+    spelling, so the review screen asks this before offering to create anything, and shows the
+    shopkeeper what it found instead of deciding silently.
+    """
+    s = get_settings()
+    snap = await catalog_svc.load_snapshot(session, shop.id, use_cache=False)
+    if not snap.products:
+        return [MatchOut(name=n, candidates=[]) for n in body.names]
+    by_code = {p.code: p for p in (await session.execute(
+        select(Product).where(Product.shop_id == shop.id, Product.is_active.is_(True)))).scalars().all()}
+    out: list[MatchOut] = []
+    for raw in body.names[:50]:
+        candidates: list[MatchCandidate] = []
+        for code, score in rank(raw, snap, limit=3):
+            product = by_code.get(code)
+            if product is None or score < s.FUZZY_SUGGEST_SCORE:
+                continue
+            candidates.append(MatchCandidate(
+                code=product.code, id=product.id, name=product.name, brand=product.brand,
+                unit=product.unit, sell_price=product.sell_price, stock_qty=product.stock_qty,
+                local_name=product.local_name, cost_price=product.cost_price, score=round(score, 3)))
+        out.append(MatchOut(name=raw, candidates=candidates))
+    return out

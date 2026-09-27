@@ -54,6 +54,20 @@ Open the URL, create your shop, then add stock: **Inventory → Import a CSV**
 Gemini's free tier allows 15 requests a minute and 1,000 a day, and Google may use that data to improve
 its products. A scan spends two of those requests, one to read the photo and one to match the lines. Move to a billed Gemini key before real customer bills go through.
 
+## After deploying accounts (migration 0006)
+
+Logins replaced the old "pick a shop from a list" screen. On the first load after this deploy every
+browser is signed out, which is expected: the old tokens are gone along with the header that made them
+unnecessary. Existing pilot shops need a username and password before they can get back in:
+
+```bash
+cd backend
+.venv/bin/python scripts/set_password.py --shop "<shop name>" --username <username>
+```
+
+`APP_SECRET` now peppers the stored session tokens as well. Changing it signs everybody out, which is
+a useful emergency lever and a bad accident: do not rotate it casually.
+
 ## "Invalid or expired token"
 
 Two separate faults caused this, both fixed. Any token issued before the fix is invalid, and the web app

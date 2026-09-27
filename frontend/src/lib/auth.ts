@@ -1,8 +1,13 @@
+/**
+ * What the screens need to render before the server answers. Not credentials: the session is an
+ * HttpOnly cookie that no script here can read or forge, which is the point. Anything in this file
+ * can be stale or missing and the app must still work.
+ */
 const KEYS = {
   shopId: 'vd.shopId',
-  token: 'vd.token',
   shopName: 'vd.shopName',
   shopType: 'vd.shopType',
+  username: 'vd.username',
   debug: 'vd.debug',
 } as const;
 
@@ -24,23 +29,20 @@ function set(k: string, v: string | null) {
 
 export const auth = {
   getShopId: () => get(KEYS.shopId),
-  getToken: () => get(KEYS.token),
   getShopName: () => get(KEYS.shopName),
   getShopType: () => get(KEYS.shopType),
-  setShop(shop: { id: string; name: string; type?: string }, token?: string | null) {
-    set(KEYS.shopId, shop.id);
-    set(KEYS.shopName, shop.name);
-    set(KEYS.shopType, shop.type ?? null);
-    set(KEYS.token, token ?? null);
+  getUsername: () => get(KEYS.username),
+  remember(me: { shop: { id: string; name: string; type?: string }; user?: { username: string | null } }) {
+    set(KEYS.shopId, me.shop.id);
+    set(KEYS.shopName, me.shop.name);
+    set(KEYS.shopType, me.shop.type ?? null);
+    set(KEYS.username, me.user?.username ?? null);
     window.dispatchEvent(new Event('vd:auth'));
   },
-  /** Drop only the signed token, keeping the shop. Requests then fall back to the X-Shop-Id header,
-   *  which is how the app recovers from a token signed with a secret the server no longer has. */
-  clearToken() {
-    set(KEYS.token, null);
-  },
   clear() {
+    const debug = get(KEYS.debug);
     Object.values(KEYS).forEach((k) => set(k, null));
+    set(KEYS.debug, debug); // a developer's own switch is not part of the session
     window.dispatchEvent(new Event('vd:auth'));
   },
   isDebug: () => get(KEYS.debug) === '1',

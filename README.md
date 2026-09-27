@@ -73,6 +73,34 @@ Every raw view (transcript, LLM JSON, corrections) is stored so accuracy can be 
 API: `POST /api/products/{id}/stock` (`qty` + `unit`, or `delta_qty`), `POST /api/products/{id}/stock/count`,
 `GET /api/products/{id}/ledger`, and voice uploads accept `mode=sale|stock_in`.
 
+## Accounts
+
+A shop registers once: shop name, type, mobile number, WhatsApp number (the same by default),
+GST number if it has one, address, then a username and a password. Sign in afterwards with the
+username **or** the mobile number.
+
+- Passwords are stored as salted **scrypt** hashes with their cost parameters attached, so the cost can
+  be raised later without invalidating anybody's password. A wrong username costs the same time as a
+  wrong password, so the endpoint cannot be used to discover who is registered.
+- A session is a row in the database, reached by a random token in an `HttpOnly`, `SameSite=Lax`,
+  `Secure` cookie. Only a peppered hash of the token is stored, so a leaked database yields no working
+  sessions. Signing out revokes the row, and changing a password revokes every other device.
+- Requests that change data must also carry an `X-VD-App` header, which a cross-site form cannot set.
+- The cookie is strictly necessary to sign in, so it needs no consent banner under the GDPR or India's
+  DPDP rules. What is offered instead is the choice that actually matters, "keep me signed in on this
+  phone", which is the difference between a 30-day cookie and one that dies with the browser.
+
+There is no way to reach a shop's data without signing in. `GET /api/shops`, which used to list every
+shop on the service, and the `X-Shop-Id` header, which believed whatever shop id it was handed, are
+both gone.
+
+**Shops created before logins existed** have no username. Give them one:
+
+```bash
+cd backend
+.venv/bin/python scripts/set_password.py --shop "Maa Tarini Medical" --username maa.tarini
+```
+
 ## Keys you need
 
 | Key | Where | Cost |

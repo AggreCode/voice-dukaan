@@ -1,8 +1,8 @@
 import { auth } from './auth';
 import {
-  HealthOut, ProductIn, ProductOut, ProductPatch, ShopOut, ShopType, StockAdjustIn, StockCountIn, StockMovementOut,
-  TransactionIn, TransactionOut, VoiceMode, VoiceSessionOut,
-  normalizeProduct, normalizeSession, normalizeStockMovement, normalizeTransaction,
+  HealthOut, MatchOut, MeOut, ProductIn, ProductOut, ProductPatch, RegisterIn, ShopOut, ShopType, StockAdjustIn,
+  StockCountIn, StockMovementOut, TransactionIn, TransactionOut, VoiceMode, VoiceSessionOut,
+  normalizeProduct, normalizeReviewProduct, normalizeSession, normalizeStockMovement, normalizeTransaction, num,
 } from './types';
 
 export class ApiError extends Error {
@@ -16,13 +16,17 @@ export class ApiError extends Error {
   }
 }
 
-function authHeaders(): Record<string, string> {
-  const h: Record<string, string> = {};
-  const token = auth.getToken();
-  const shopId = auth.getShopId();
-  if (token) h['Authorization'] = `Bearer ${token}`;
-  if (shopId) h['X-Shop-Id'] = shopId;
-  return h;
+/**
+ * Every request says it came from this app.
+ *
+ * The session lives in an HttpOnly cookie, which the browser attaches on its own and no script can
+ * read, so there is nothing to put in an Authorization header any more. A cookie alone would also be
+ * attached to a request another site made on the shopkeeper's behalf, so this header is the proof it
+ * was us: a cross-site form cannot set one, and a cross-origin script cannot either without a CORS
+ * preflight the server does not grant. The server requires it on anything that changes data.
+ */
+function appHeaders(): Record<string, string> {
+  return { 'X-VD-App': '1' };
 }
 
 function extractMessage(status: number, body: unknown): string {
@@ -49,7 +53,7 @@ export interface RequestOptions {
 }
 
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...authHeaders() };
+  const headers: Record<string, string> = { Accept: 'application/json', ...appHeaders() };
   let body: BodyInit | undefined;
   if (opts.body instanceof FormData) {
     body = opts.body;
@@ -69,27 +73,23 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   let res: Response;
   try {
-    res = await fetch(url, { method: opts.method ?? 'GET', headers, body, signal: opts.signal });
+    res = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers,
+      body,
+      signal: opts.signal,
+      // Send the session cookie. Same-origin in production (one container) and through the Vite proxy
+      // in development, so this never becomes a cross-site request.
+      credentials: 'same-origin',
+    });
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
     throw new ApiError(0, 'Network error. Check your connection.');
   }
 
-  // A stored token the server can no longer verify (its signing secret changed) used to lock the app
-  // out for good. Drop the token and retry once with the plain X-Shop-Id header; if that also fails,
-  // sign out so Onboarding is shown instead of an unexplained error on every screen.
-  if (res.status === 401 && headers['Authorization']) {
-    auth.clearToken();
-    delete headers['Authorization'];
-    try {
-      // body is FormData or a string here, both replayable.
-      res = await fetch(url, { method: opts.method ?? 'GET', headers, body, signal: opts.signal });
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') throw e;
-      throw new ApiError(0, 'Network error. Check your connection.');
-    }
-    if (res.status === 401) auth.clear();
-  }
+  // The session ended: expired, signed out on another device, or the password was changed. Drop the
+  // cached shop and let the app show the login screen rather than an error on every panel.
+  if (res.status === 401 && !path.startsWith('/api/auth/')) auth.clear();
 
   const text = await res.text();
   let parsed: unknown = null;
@@ -107,13 +107,25 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 export const api = {
   health: () => request<HealthOut>('/api/health'),
 
+  auth: {
+    /** The signed-in shop, or a 401 when nobody is. This is the app's front door on every load. */
+    me: () => request<MeOut>('/api/auth/me'),
+    register: (body: RegisterIn) => request<MeOut>('/api/auth/register', { method: 'POST', body }),
+    login: (username: string, password: string, remember: boolean) =>
+      request<MeOut>('/api/auth/login', { method: 'POST', body: { username, password, remember } }),
+    logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+    usernameAvailable: (username: string) =>
+      request<{ username: string; available: boolean; reason: string }>('/api/auth/username-available', {
+        query: { username },
+      }),
+    changePassword: (current_password: string, new_password: string) =>
+      request<{ ok: boolean }>('/api/auth/password', { method: 'POST', body: { current_password, new_password } }),
+  },
+
   shops: {
-    list: () => request<ShopOut[]>('/api/shops'),
-    create: (body: { name: string; type: string; default_language: string; owner_name: string; pin?: string }) =>
-      request<{ token: string; shop: ShopOut }>('/api/shops', { method: 'POST', body }),
-    login: (shop_id: string, pin: string) =>
-      request<{ token: string; shop: ShopOut }>('/api/auth/login', { method: 'POST', body: { shop_id, pin } }),
     me: () => request<ShopOut>('/api/shops/me'),
+    update: (body: Partial<ShopOut> & { name: string }) =>
+      request<ShopOut>('/api/shops/me', { method: 'PATCH', body }),
   },
 
   products: {
@@ -135,6 +147,13 @@ export const api = {
       normalizeProduct(await request<ProductOut>(`/api/products/${id}/aliases`, { method: 'POST', body: { alias, lang } })),
     deleteAlias: async (id: string, alias: string) =>
       normalizeProduct(await request<ProductOut>(`/api/products/${id}/aliases/${encodeURIComponent(alias)}`, { method: 'DELETE' })),
+    /** Existing products these written names might mean. Used before offering to create anything,
+     *  so stocking in adds to the product already on the shelf instead of duplicating it. */
+    match: async (names: string[]) =>
+      (await request<MatchOut[]>('/api/products/match', { method: 'POST', body: { names } })).map((m) => ({
+        ...m,
+        candidates: (m.candidates || []).map((c) => ({ ...normalizeReviewProduct(c), score: num(c.score) })),
+      })),
     importCsv: (file: File) => {
       const fd = new FormData();
       fd.append('file', file, file.name);

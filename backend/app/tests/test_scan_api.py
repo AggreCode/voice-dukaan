@@ -86,10 +86,14 @@ async def test_scan_upload_reads_matches_and_stores_no_photo(monkeypatch):
     monkeypatch.setattr(scan_api, "get_reader", lambda: reader)
     monkeypatch.setattr(scan_api, "get_extractor", lambda: StubExtractor())
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        r = await c.post("/api/shops", json={"name": f"t-{uuid.uuid4().hex[:6]}", "type": "kirana"})
-        shop_id = r.json()["shop"]["id"]
-        h = {"X-Shop-Id": shop_id}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+                           headers={"x-vd-app": "1"}) as c:
+        handle = uuid.uuid4().hex[:8]
+        r = await c.post("/api/auth/register", json={
+            "name": f"t-{handle}", "type": "kirana", "mobile": "9876543211",
+            "username": f"u{handle}", "password": "a-good-password"})
+        assert r.status_code == 201, r.text
+        h: dict[str, str] = {}
         for name, unit in (("Sugar", "kg"), ("Paracetamol 500mg", "strip")):
             r = await c.post("/api/products", headers=h, json={"name": name, "unit": unit, "sell_price": 20,
                                                                "aliases": ["chini" if unit == "kg" else "para"],

@@ -6,6 +6,37 @@ export interface ShopOut {
   type: ShopType | string;
   default_language: string;
   catalog_version: number;
+  gst_number: string | null;
+  mobile: string | null;
+  whatsapp: string | null;
+  address: string | null;
+}
+
+export interface UserOut {
+  id: string;
+  username: string | null;
+  display_name: string;
+  role: string;
+}
+
+/** Who is signed in. The session itself is an HttpOnly cookie the browser holds; this is only what
+ *  the screens need to show. */
+export interface MeOut {
+  shop: ShopOut;
+  user: UserOut;
+}
+
+export interface RegisterIn {
+  name: string;
+  type: ShopType | string;
+  default_language: string;
+  gst_number?: string | null;
+  mobile: string;
+  whatsapp?: string | null;
+  address?: string | null;
+  owner_name?: string;
+  username: string;
+  password: string;
 }
 
 export interface HealthOut {
@@ -110,6 +141,16 @@ export interface ReviewProduct {
   sell_price: number;
   cost_price: number | null;
   stock_qty: number;
+}
+
+/** An existing inventory product a written line might mean, with how well it fits. */
+export interface MatchCandidate extends ReviewProduct {
+  score: number;
+}
+
+export interface MatchOut {
+  name: string;
+  candidates: MatchCandidate[];
 }
 
 export interface VoiceSessionOut {

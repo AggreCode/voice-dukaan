@@ -11,7 +11,15 @@ from decimal import Decimal
 from app.config import get_settings
 from app.schemas.extraction import BillExtraction, ExtractedItem, Intent
 from app.services.catalog import CatalogProduct, CatalogSnapshot
-from app.services.fuzzy import fill_unresolved, fold, rank, score_term, skeleton
+from app.services.fuzzy import (
+    best_score,
+    fill_unresolved,
+    fold,
+    rank,
+    score_term,
+    skeleton,
+    verify_matches,
+)
 
 
 def _snap(*products: tuple[str, str, list[str]]) -> CatalogSnapshot:
@@ -127,3 +135,48 @@ def test_alternatives_are_capped_at_three():
     big = _snap(*[(f"p{i:03d}", f"Biscuit Brand {i}", ["bisc"]) for i in range(1, 7)])
     bill = fill_unresolved(_bill(_item("bisc")), big)
     assert len(bill.items[0].alternatives) <= 3
+
+
+# --- auditing a match the model made -----------------------------------------------------------
+def _matched(span: str, code: str, guess: str = "") -> ExtractedItem:
+    return ExtractedItem(spoken_span=span, product_id=code, product_name_guess=guess, quantity=1,
+                         unit="piece", unit_price=None, alternatives=[], confidence=0.9,
+                         needs_review=False, reason="")
+
+
+def test_a_real_match_survives_the_audit():
+    for span in ("1 | Paracetamol 500mg | 10 | strip | 18", "para", "ପାରା 10"):
+        bill = verify_matches(_bill(_matched(span, "p001")), MEDICAL)
+        assert bill.items[0].product_id == "p001", span
+
+
+def test_a_product_the_line_does_not_support_is_dropped_with_the_raw_line_kept():
+    """A model asked to pick from a list will pick from the list. The paper said one thing and the
+    answer named a shelf-mate, so the shopkeeper must see the line, not a confident wrong product."""
+    bill = verify_matches(_bill(_matched("Toor Dal | 5 | kg | 120", "p003")), MEDICAL)
+    item = bill.items[0]
+    assert item.product_id is None
+    assert "weak_match" in item.reason and item.needs_review is True
+    assert item.confidence <= 0.3
+    assert item.product_name_guess == "Toor Dal | 5 | kg | 120"  # the raw line is what is shown
+
+
+def test_the_audit_leaves_unmatched_lines_alone():
+    bill = verify_matches(_bill(_item("shampoo")), MEDICAL)
+    assert bill.items[0].product_id is None and "weak_match" not in bill.items[0].reason
+
+
+def test_a_shop_spelling_that_differs_from_the_bill_still_counts_as_the_same_product():
+    """The wholesaler's wording is never the shop's. Every word of the shop's name inside the line is
+    what makes it the same product, and it must not be read as a reason to create a second copy."""
+    shop = _snap(("p001", "Rice", ["chaula"]), ("p002", "Tomato Sauce", []))
+    assert best_score("1 | Rice (Premium) | 50 | kg | 52.00", shop, "p001") >= 0.6
+    assert best_score("Premium Rice 25kg bag", shop, "p001") >= 0.6
+    # and a coincidence of letters does not clear the same bar
+    assert best_score("Toor Dal | 5 | kg", shop, "p002") < 0.6
+
+
+def test_audit_then_fill_does_not_put_the_wrong_product_back():
+    bill = _bill(_matched("Toor Dal | 5 | kg | 120", "p003"))
+    bill = fill_unresolved(verify_matches(bill, MEDICAL), MEDICAL)
+    assert bill.items[0].product_id is None

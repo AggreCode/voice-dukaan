@@ -1,6 +1,6 @@
 import ConfidenceBadge, { confidenceLevel } from './ConfidenceBadge';
 import { COMMON_UNITS, extractionReasonLabel } from '../lib/constants';
-import { PriceKind, ReviewItem, defaultUnitPrice, lineTotal } from '../lib/reviewModel';
+import { PickedProduct, PriceKind, ReviewItem, defaultUnitPrice, lineTotal } from '../lib/reviewModel';
 import { formatStock } from '../lib/stock';
 import { cx, fmtMoney } from '../lib/utils';
 
@@ -21,9 +21,12 @@ interface Props {
    * day of an item. The row stays editable and saving creates it.
    */
   newItemOk?: boolean;
+  /** An existing inventory product this line probably means, offered instead of creating a duplicate. */
+  suggestion?: PickedProduct | null;
+  onUseSuggestion?: () => void;
 }
 
-export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice', newItemOk = false }: Props) {
+export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice', newItemOk = false, suggestion = null, onUseSuggestion }: Props) {
   const conf = item.original?.confidence ?? (item.product ? 1 : 0);
   const level = confidenceLevel(conf, !!item.product);
   const needsReview = item.original?.needs_review ?? false;
@@ -147,6 +150,30 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
           />
         </label>
       </div>
+
+      {/* The wholesaler's wording is never the shop's, so a line that looks new may well be a product
+          already on the shelf. Offer it before anything gets created twice. */}
+      {isNew && suggestion && onUseSuggestion && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-primary/40 bg-white px-2 py-1.5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] text-slate-500">Already in your inventory</p>
+            <p className="truncate text-sm font-semibold text-slate-800">
+              {suggestion.name}
+              <span className="ml-1 font-normal text-slate-500">· {formatStock(suggestion.stock_qty, suggestion.unit)}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUseSuggestion();
+            }}
+            className="min-h-[40px] shrink-0 rounded-lg bg-primary px-3 text-xs font-bold text-white"
+          >
+            Add stock to it
+          </button>
+        </div>
+      )}
 
       {/* Evidence, then what to do about it: the words this line came from, and any flag in plain
           language. Both, not one or the other -- the words are how the shopkeeper judges the flag. */}

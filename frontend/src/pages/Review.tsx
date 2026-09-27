@@ -199,6 +199,25 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
     return out;
   };
 
+  /**
+   * Before anything is created, ask the shop's own inventory whether these names are already on the
+   * shelf under different wording. The wholesaler writes "Rice (Premium) 25kg", the shop calls it
+   * "Rice", and stocking in must add to the one that exists rather than start a second row for it.
+   */
+  const newNames = useMemo(() => Array.from(new Set(newItems.map(newItemName).filter(Boolean))), [newItems]);
+  const suggestions = useQuery({
+    queryKey: ['product-match', newNames],
+    queryFn: () => api.products.match(newNames),
+    enabled: newNames.length > 0,
+    staleTime: 60_000,
+  });
+  const suggestionFor = (it: ReviewItem): PickedProduct | null => {
+    const name = newItemName(it);
+    const hit = suggestions.data?.find((m) => m.name === name);
+    const best = hit?.candidates[0];
+    return best ? toPicked(best) : null;
+  };
+
   const save = useMutation({
     mutationFn: async () => {
       let rows = items;
@@ -346,6 +365,12 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
             Saving adds {newItems.length === 1 ? 'it' : 'them'} with this bill's rate as the cost price and the
             stock from this bill. Set your selling prices afterwards in Inventory.
           </p>
+          {newItems.some((i) => suggestionFor(i)) && (
+            <p className="mt-1 text-xs font-semibold">
+              Some look like products you already stock. Check the suggestions below before saving, so stock
+              is added to the item you already have.
+            </p>
+          )}
         </div>
       )}
 
@@ -362,6 +387,11 @@ function ReviewForm({ session, onSaved }: { session: VoiceSessionOut; onSaved: (
             priceKind={priceKind}
             source={fromPhoto ? 'image' : 'voice'}
             newItemOk={newKeys.has(it.key)}
+            suggestion={newKeys.has(it.key) ? suggestionFor(it) : null}
+            onUseSuggestion={() => {
+              const p = suggestionFor(it);
+              if (p) selectProduct(it.key, p);
+            }}
           />
         ))}
       </ul>

@@ -7,7 +7,16 @@ import { cx } from '../lib/utils';
 import { usePendingCount } from '../lib/uploadQueue';
 import { useToast } from '../components/Toast';
 
-export default function Settings({ onSwitchShop }: { onSwitchShop: () => void }) {
+export default function Settings() {
+  // Signing out revokes the session on the server, so the cookie cannot be replayed afterwards.
+  const signOut = useMutation({
+    mutationFn: api.auth.logout,
+    onSettled: () => {
+      auth.clear();
+      window.location.replace('/');
+    },
+  });
+
   const [debug, setDebug] = useState(auth.isDebug());
   const pending = usePendingCount();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -116,17 +125,16 @@ export default function Settings({ onSwitchShop }: { onSwitchShop: () => void })
         >
           API docs (/docs) ↗
         </a>
+        <ChangePassword />
         <button
           type="button"
           onClick={() => {
-            if (window.confirm('Switch shop? This clears the saved shop on this device.')) {
-              auth.clear();
-              onSwitchShop();
-            }
+            if (window.confirm('Sign out of this shop on this device?')) signOut.mutate();
           }}
-          className="min-h-[48px] w-full rounded-xl border border-red-300 bg-red-50 font-semibold text-red-700"
+          disabled={signOut.isPending}
+          className="min-h-[48px] w-full rounded-xl border border-red-300 bg-red-50 font-semibold text-red-700 disabled:opacity-60"
         >
-          Switch shop
+          {signOut.isPending ? 'Signing out…' : `Sign out${auth.getUsername() ? ` (${auth.getUsername()})` : ''}`}
         </button>
       </section>
       <p className="mt-6 text-center text-[11px] text-slate-400">Voice Dukan · v{__APP_VERSION__}</p>
@@ -139,5 +147,67 @@ function Dot({ ok, neutral }: { ok: boolean; neutral?: boolean }) {
     <span
       className={cx('mr-2 inline-block h-3 w-3 rounded-full align-middle', ok ? 'bg-emerald-500' : neutral ? 'bg-slate-300' : 'bg-red-500')}
     />
+  );
+}
+
+/** Changing a password signs every other device out, which is the point of changing it. */
+function ChangePassword() {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
+
+  const change = useMutation({
+    mutationFn: () => api.auth.changePassword(current, next),
+    onSuccess: () => {
+      setOpen(false);
+      setCurrent('');
+      setNext('');
+      setMsg(null);
+      toast.success('Password changed. Other devices were signed out.');
+    },
+    onError: (e) => setMsg(e instanceof ApiError ? e.message : (e as Error).message),
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="min-h-[48px] w-full rounded-xl border border-slate-300 bg-white font-medium text-slate-700"
+      >
+        Change password
+      </button>
+    );
+  }
+  const field = 'min-h-[48px] w-full rounded-lg border border-slate-300 bg-white px-3 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        setMsg(null);
+        if (next.length >= 8) change.mutate();
+        else setMsg('Use at least 8 characters.');
+      }}
+      className="space-y-2 rounded-xl border border-slate-200 bg-white p-3"
+    >
+      <p className="text-sm font-semibold text-slate-700">Change password</p>
+      {msg && <p className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">{msg}</p>}
+      <input className={field} type="password" autoComplete="current-password" placeholder="Current password"
+             value={current} onChange={(e) => setCurrent(e.target.value)} />
+      <input className={field} type="password" autoComplete="new-password" placeholder="New password (8+ characters)"
+             value={next} onChange={(e) => setNext(e.target.value)} />
+      <p className="text-[11px] text-slate-500">Every other device will be signed out.</p>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setOpen(false)} className="min-h-[44px] flex-1 rounded-lg border border-slate-300 font-medium">
+          Cancel
+        </button>
+        <button type="submit" disabled={change.isPending || !current || !next}
+                className="min-h-[44px] flex-1 rounded-lg bg-primary font-semibold text-white disabled:bg-slate-300">
+          {change.isPending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </form>
   );
 }
