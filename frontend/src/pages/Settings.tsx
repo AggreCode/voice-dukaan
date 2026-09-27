@@ -8,13 +8,16 @@ import { usePendingCount } from '../lib/uploadQueue';
 import { useToast } from '../components/Toast';
 
 export default function Settings() {
-  // Signing out revokes the session on the server, so the cookie cannot be replayed afterwards.
+  /**
+   * Signing out revokes the session on the server so the cookie cannot be replayed. The screen does
+   * not wait for that: clearing the local shop flips the app to the sign-in page immediately, and the
+   * request carries the cookie regardless because the browser holds it, not this code.
+   */
   const signOut = useMutation({
     mutationFn: api.auth.logout,
-    onSettled: () => {
-      auth.clear();
-      window.location.replace('/');
-    },
+    onMutate: () => auth.clear(),
+    onError: () =>
+      toast.error('Signed out here, but the server could not be reached. Sign out again when you have signal.'),
   });
 
   const [debug, setDebug] = useState(auth.isDebug());

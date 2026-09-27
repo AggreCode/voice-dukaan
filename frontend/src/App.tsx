@@ -5,6 +5,7 @@ import BottomNav from './components/BottomNav';
 import { api, ApiError } from './lib/api';
 import { auth } from './lib/auth';
 import { MeOut } from './lib/types';
+import { useSlowHint } from './lib/useSlowHint';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Record from './pages/Record';
@@ -18,54 +19,66 @@ export default function App() {
   const qc = useQueryClient();
   const loc = useLocation();
   const [wantsRegister, setWantsRegister] = useState(false);
-
   /**
-   * The front door. The session is an HttpOnly cookie the browser sends on its own, so the only way
-   * to know whether anyone is signed in is to ask. If the cookie is there and valid this resolves
-   * before the first paint finishes and the shop opens straight away; if not, the login screen shows.
+   * Set the moment the shopkeeper signs out, before the server has answered.
+   *
+   * Signing out used to reload the whole page, which on a sleeping free instance meant downloading
+   * the app again and waiting for the server to wake. Nothing about ending a session needs a reload:
+   * the cookie is cleared by the response, and this flips the screen straight away.
    */
+  const [signedOut, setSignedOut] = useState(false);
+
   const me = useQuery<MeOut>({
     queryKey: ['me'],
     queryFn: api.auth.me,
+    enabled: !signedOut,
     retry: (count, e) => !(e instanceof ApiError && e.status === 401) && count < 2,
     staleTime: 5 * 60_000,
   });
+
+  // auth.clear() and auth.remember() both announce themselves, from anywhere in the app: a 401 on any
+  // screen, the sign-out button, a fresh sign-in. One listener, registered once.
+  useEffect(() => {
+    const h = () => setSignedOut(!auth.getShopId());
+    window.addEventListener('vd:auth', h);
+    return () => window.removeEventListener('vd:auth', h);
+  }, []);
+
+  // One shop's data must never be on screen while another signs in.
+  useEffect(() => {
+    if (signedOut) qc.clear();
+  }, [signedOut, qc]);
 
   useEffect(() => {
     if (me.data) auth.remember(me.data);
   }, [me.data]);
 
-  // Any screen can discover the session has ended (api.ts clears the cache on a 401).
-  useEffect(() => {
-    const h = () => {
-      if (!auth.getShopId()) {
-        qc.clear();
-        void me.refetch();
-      }
-    };
-    window.addEventListener('vd:auth', h);
-    return () => window.removeEventListener('vd:auth', h);
-  }, [qc, me]);
-
   const signedIn = useCallback(
     (data: MeOut) => {
-      auth.remember(data);
-      qc.clear();
+      // Seed the answer first, then drop everything else, so the app never blinks through its
+      // loading state on the way in.
       qc.setQueryData(['me'], data);
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+      auth.remember(data);
+      setSignedOut(false);
       setWantsRegister(false);
     },
     [qc],
   );
 
-  if (me.isLoading) return <Splash />;
+  const authScreen = wantsRegister ? (
+    <Register onDone={signedIn} onSignIn={() => setWantsRegister(false)} />
+  ) : (
+    <Login onSignedIn={signedIn} onRegister={() => setWantsRegister(true)} />
+  );
 
-  const unauthenticated = me.isError && me.error instanceof ApiError && me.error.status === 401;
-  if (unauthenticated || (!me.data && me.isError)) {
-    if (!unauthenticated) return <Unreachable onRetry={() => void me.refetch()} message={(me.error as Error).message} />;
-    return wantsRegister ? (
-      <Register onDone={signedIn} onSignIn={() => setWantsRegister(false)} />
+  if (signedOut) return authScreen;
+  if (me.isLoading) return <Splash />;
+  if (me.isError) {
+    return me.error instanceof ApiError && me.error.status === 401 ? (
+      authScreen
     ) : (
-      <Login onSignedIn={signedIn} onRegister={() => setWantsRegister(true)} />
+      <Unreachable onRetry={() => void me.refetch()} message={(me.error as Error).message} />
     );
   }
   if (!me.data) return <Splash />;
@@ -87,11 +100,14 @@ export default function App() {
 }
 
 function Splash() {
+  const slow = useSlowHint(true);
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-8 text-center">
       <img src="/icon.svg" alt="" className="h-16 w-16 rounded-2xl opacity-90" />
       <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-      <span className="sr-only">Opening your shop</span>
+      <p className="min-h-[40px] text-sm text-slate-500">
+        {slow ? 'Waking the server. The free plan sleeps when nobody is billing, so the first visit of the day takes about a minute.' : 'Opening your shop…'}
+      </p>
     </div>
   );
 }

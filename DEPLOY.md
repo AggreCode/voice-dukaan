@@ -90,7 +90,16 @@ now clears a rejected token by itself and falls back to the plain shop header, s
 
 If a browser is still stuck, clear the site data for the app, or open Settings and switch shop.
 
-## Keeping it awake (optional)
+## Keeping it awake
 
-A free pinger such as <https://cron-job.org> calling `/api/health` every 10 minutes during shop hours
-keeps it warm. It spends the same 750 monthly hours, so schedule it 8am–10pm, not all night.
+Not optional once a real shop is using it. A free instance sleeps after fifteen idle minutes, and the
+next visitor waits about a minute while it wakes. That wait is why signing in feels slow; it is not the
+password check, which takes 40 milliseconds.
+
+Point a free pinger such as <https://cron-job.org> at `https://mo-dokan.onrender.com/api/health` every
+10 minutes. Schedule it for shop hours only, say 8am to 10pm: pinging around the clock spends the same
+750 monthly instance hours the free plan allows, and a shop that bills all night is not the problem
+being solved here.
+
+The app says what is happening while it waits, rather than showing a spinner that looks broken, but
+the only real fix is to stop it sleeping.

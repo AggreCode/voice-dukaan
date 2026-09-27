@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
+import { useSlowHint } from '../lib/useSlowHint';
 import { MeOut } from '../lib/types';
 import { cx } from '../lib/utils';
 
@@ -66,6 +67,8 @@ export default function Login({ onSignedIn, onRegister }: { onSignedIn: (me: MeO
     onError: (e) => setErr(e instanceof ApiError ? e.message : (e as Error).message),
   });
 
+  const waking = useSlowHint(signIn.isPending, 4000);
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
@@ -122,6 +125,12 @@ export default function Login({ onSignedIn, onRegister }: { onSignedIn: (me: MeO
         >
           {signIn.isPending ? 'Signing in…' : 'Sign in'}
         </button>
+        {waking && (
+          <p className="text-center text-xs text-slate-500">
+            Waking the server. The free plan sleeps when nobody is billing, so this first sign-in can take
+            about a minute.
+          </p>
+        )}
       </form>
 
       <p className="mt-5 text-center text-sm text-slate-600">

@@ -89,7 +89,11 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   // The session ended: expired, signed out on another device, or the password was changed. Drop the
   // cached shop and let the app show the login screen rather than an error on every panel.
-  if (res.status === 401 && !path.startsWith('/api/auth/')) auth.clear();
+  //
+  // Several screens are usually loading at once, and each would otherwise announce the sign-out and
+  // set off another round of refetching, which is what made signing out feel like a stutter. Announce
+  // it once and ignore the rest.
+  if (res.status === 401 && !path.startsWith('/api/auth/') && auth.getShopId()) auth.clear();
 
   const text = await res.text();
   let parsed: unknown = null;
