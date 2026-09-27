@@ -107,7 +107,7 @@ async def test_full_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(voice_api, "get_extractor", lambda: fake_llm)
 
     # Every request carries the app header; the login cookie rides in the client's own jar.
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
                            headers={"x-vd-app": "1"}) as c:
         handle = uuid.uuid4().hex[:8]
         r = await c.post("/api/auth/register", json={
@@ -192,6 +192,8 @@ async def test_full_flow(tmp_path, monkeypatch):
 async def test_no_speech_short_circuit(tmp_path, monkeypatch):
     if not await _db_ready():
         pytest.skip("postgres not reachable")
+    if subprocess.run(["which", "ffmpeg"], capture_output=True).returncode != 0:
+        pytest.skip("ffmpeg missing")
     from app.api import voice as voice_api
     from app.main import app
 
@@ -203,10 +205,15 @@ async def test_no_speech_short_circuit(tmp_path, monkeypatch):
         intent=Intent.unknown, items=[], customer_name=None, payment_mode=None, notes="", transcript_language="od")))
     wav = tmp_path / "silence.wav"
     sf.write(str(wav), np.zeros(16000 * 2, dtype="float32"), 16000)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        shop_id = (await c.post("/api/shops", json={"name": "silent", "type": "kirana"})).json()["shop"]["id"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
+                           headers={"x-vd-app": "1"}) as c:
+        handle = uuid.uuid4().hex[:8]
+        reg = await c.post("/api/auth/register", json={
+            "name": "silent", "type": "kirana", "mobile": ("9" + "".join(str(int(ch, 16) % 10) for ch in handle) + "0000000000")[:10],
+            "username": f"s{handle}", "password": "a-good-password"})
+        assert reg.status_code == 201, reg.text
         with open(wav, "rb") as f:
-            r = await c.post("/api/voice/sessions", headers={"X-Shop-Id": shop_id},
+            r = await c.post("/api/voice/sessions",
                              data={"client_session_id": str(uuid.uuid4()), "mode": "stock_in"},
                              files={"audio": ("s.wav", f, "audio/wav")})
     assert r.status_code == 200 and r.json()["status"] == "no_speech", r.text

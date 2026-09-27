@@ -35,12 +35,18 @@ async def _db_ready() -> bool:
 def _client():
     from app.main import app
 
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+    return AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
                        headers={"x-vd-app": "1"})
 
 
+def _digits(handle: str) -> str:
+    """A ten digit phone number made from a hex handle. Padded, because an eight character handle is
+    two digits short of a real mobile number and the server is right to refuse it."""
+    return ("9" + "".join(str(int(c, 16) % 10) for c in handle) + "0000000000")[:10]
+
+
 def _registration(handle: str) -> dict:
-    return {"name": f"t-{handle}", "type": "kirana", "mobile": f"98765{handle[:5]}",
+    return {"name": f"t-{handle}", "type": "kirana", "mobile": _digits(handle),
             "address": "Main Road, Bhubaneswar", "gst_number": "21ABCDE1234F1Z5",
             "owner_name": "Owner", "username": f"u{handle}", "password": "a-good-password"}
 
@@ -160,7 +166,7 @@ async def test_a_state_changing_request_needs_the_app_header():
         await c.post("/api/auth/register", json=_registration(handle))
         cookie = c.cookies.get(COOKIE_NAME)
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
                            cookies={COOKIE_NAME: cookie}) as forged:
         assert (await forged.get("/api/products")).status_code == 200, "reading is unaffected"
         r = await forged.post("/api/products", json={"name": "Injected", "unit": "kg"})

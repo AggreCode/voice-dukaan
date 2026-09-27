@@ -51,10 +51,20 @@ def test_the_minimum_length_is_stated_once_and_is_not_silly():
     assert MIN_PASSWORD_LENGTH >= 8
 
 
-def test_a_session_token_is_random_and_what_is_stored_is_not_the_token():
+@pytest.fixture
+def app_secret():
+    """Put APP_SECRET back afterwards. Leaving it changed invalidates every session another test
+    created, which is exactly the failure this fixture exists to stop."""
     from app.config import get_settings
 
-    get_settings().APP_SECRET = "test-secret"
+    s = get_settings()
+    original = s.APP_SECRET
+    yield s
+    s.APP_SECRET = original
+
+
+def test_a_session_token_is_random_and_what_is_stored_is_not_the_token(app_secret):
+    app_secret.APP_SECRET = "test-secret"
     tokens = {session_svc.new_token() for _ in range(200)}
     assert len(tokens) == 200, "session tokens must not repeat"
     token = tokens.pop()
@@ -66,13 +76,10 @@ def test_a_session_token_is_random_and_what_is_stored_is_not_the_token():
 
 
 @pytest.mark.parametrize("secret", ["one", "two"])
-def test_the_stored_hash_depends_on_the_application_secret(secret):
+def test_the_stored_hash_depends_on_the_application_secret(secret, app_secret):
     """A leaked sessions table is useless without APP_SECRET."""
-    from app.config import get_settings
-
-    s = get_settings()
     token = "a-fixed-token"
-    s.APP_SECRET = secret
+    app_secret.APP_SECRET = secret
     got = session_svc.token_hash(token)
-    s.APP_SECRET = secret + "-different"
+    app_secret.APP_SECRET = secret + "-different"
     assert got != session_svc.token_hash(token)

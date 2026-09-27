@@ -180,6 +180,18 @@ infra/                   docker-compose, Dockerfiles, Caddyfile
 cd backend && DATABASE_URL=postgresql+asyncpg://vd:vd@localhost:5433/voicedukan .venv/bin/pytest -q
 ```
 
+No Docker on the machine? A real PostgreSQL ships as a wheel, so the database tests still run:
+
+```bash
+cd backend
+.venv/bin/pip install -e ".[dev,localdb]"
+.venv/bin/python scripts/devdb.py pytest -q            # starts postgres, migrates, runs everything
+.venv/bin/python scripts/devdb.py uvicorn app.main:app --port 8000   # or run the app against it
+```
+
+The tests that transcode audio need `ffmpeg` on the PATH and skip without it. Tests talk to the API
+over `https://` because the session cookie is marked `Secure`, exactly as a browser requires.
+
 ## Phase 2 (not built yet)
 Once the LLM is cheap, speech-to-text is the largest cost. A self-hosted Indian-language speech model
 (AI4Bharat IndicConformer) can replace Sarvam behind the same `STTProvider` interface when volume justifies a server.

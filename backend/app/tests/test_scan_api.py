@@ -86,7 +86,7 @@ async def test_scan_upload_reads_matches_and_stores_no_photo(monkeypatch):
     monkeypatch.setattr(scan_api, "get_reader", lambda: reader)
     monkeypatch.setattr(scan_api, "get_extractor", lambda: StubExtractor())
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
                            headers={"x-vd-app": "1"}) as c:
         handle = uuid.uuid4().hex[:8]
         r = await c.post("/api/auth/register", json={

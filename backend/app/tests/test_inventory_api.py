@@ -4,6 +4,7 @@ names, CSV import, and the autocomplete glossary. Skipped when the database is u
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -24,9 +25,24 @@ async def _db_ready() -> bool:
 
 
 async def _client_and_shop(c: AsyncClient, kind: str = "medical") -> dict:
-    r = await c.post("/api/shops", json={"name": f"t-inv-{uuid.uuid4().hex[:6]}", "type": kind})
-    assert r.status_code == 200, r.text
-    return {"X-Shop-Id": r.json()["shop"]["id"]}
+    """Register a shop and sign in. The session rides in the client's cookie jar from here on, so the
+    returned headers are empty: there is no way to name a shop without proving you own it."""
+    handle = uuid.uuid4().hex[:8]
+    digits = ("9" + "".join(str(int(ch, 16) % 10) for ch in handle) + "0000000000")[:10]
+    r = await c.post("/api/auth/register", headers={"x-vd-app": "1"}, json={
+        "name": f"t-inv-{handle}", "type": kind, "mobile": digits,
+        "username": f"inv{handle}", "password": "a-good-password"})
+    assert r.status_code == 201, r.text
+    return {}
+
+
+@asynccontextmanager
+async def _shop_client(app, kind: str = "medical"):
+    """A client signed in as its own freshly registered shop, like a separate browser."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
+                           headers={"x-vd-app": "1"}) as c:
+        await _client_and_shop(c, kind=kind)
+        yield c
 
 
 async def test_quick_add_uses_one_unit_no_conversion():
@@ -34,7 +50,8 @@ async def test_quick_add_uses_one_unit_no_conversion():
         pytest.skip("postgres not reachable")
     from app.main import app
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
+                           headers={"x-vd-app": "1"}) as c:
         h = await _client_and_shop(c)
         # the 3-field quick add: name, unit, quantity (opening_stock) -- everything else optional
         r = await c.post("/api/products", headers=h, json={"name": "Rice Basmati", "unit": "kg", "opening_stock": 50})
@@ -54,7 +71,8 @@ async def test_register_and_update_stock():
         pytest.skip("postgres not reachable")
     from app.main import app
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
+                           headers={"x-vd-app": "1"}) as c:
         h = await _client_and_shop(c)
         r = await c.post("/api/products", headers=h, json={
             "name": "Paracetamol 500mg", "brand": "Cipla", "unit": "strip",
@@ -119,7 +137,8 @@ async def test_csv_import_new_repeated_and_existing_products():
         "Crocin 500,GSK,strip,31,24,krocin,,\n"
         "ORS Electral,FDC,packet,22,,ors,10,ଓଆରଏସ ପ୍ୟାକେଟ\n"
     )
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
+                           headers={"x-vd-app": "1"}) as c:
         h = await _client_and_shop(c)
         r = await c.post("/api/products/import", headers=h, files={"file": ("stock.csv", csv_text.encode(), "text/csv")})
         assert r.status_code == 200, r.text
@@ -141,29 +160,30 @@ async def test_glossary_suggests_by_shop_type_but_never_constrains_input():
         pytest.skip("postgres not reachable")
     from app.main import app
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        h_med = await _client_and_shop(c, kind="medical")
-        h_kir = await _client_and_shop(c, kind="kirana")
-
-        med = (await c.get("/api/glossary", headers=h_med, params={"q": "paracetamol"})).json()
+    # Two shops means two clients now. One client holds one session cookie, so registering a second
+    # shop on the same client simply replaces the first: there is no way to be two shops at once,
+    # which is the whole point of the change that removed the X-Shop-Id header.
+    async with _shop_client(app, kind="medical") as med_c, _shop_client(app, kind="kirana") as kir_c:
+        med = (await med_c.get("/api/glossary", params={"q": "paracetamol"})).json()
         assert any("paracetamol" in name.casefold() for name in med), med
         assert len(med) >= 1
 
-        kir = (await c.get("/api/glossary", headers=h_kir, params={"q": "rice"})).json()
+        kir = (await kir_c.get("/api/glossary", params={"q": "rice"})).json()
         assert any("rice" in name.casefold() for name in kir), kir
 
         # medical and kirana suggestion pools are meaningfully different
-        med_all = set((await c.get("/api/glossary", headers=h_med, params={"limit": 50})).json())
-        kir_all = set((await c.get("/api/glossary", headers=h_kir, params={"limit": 50})).json())
+        med_all = set((await med_c.get("/api/glossary", params={"limit": 50})).json())
+        kir_all = set((await kir_c.get("/api/glossary", params={"limit": 50})).json())
         assert med_all and kir_all and med_all != kir_all
 
         # a name that is NOT on any glossary is still accepted as a real product -- the list never constrains input
-        r = await c.post("/api/products", headers=h_med,
-                         json={"name": "Grandma's Secret Herbal Mix", "unit": "jar", "opening_stock": 4})
+        r = await med_c.post("/api/products",
+                             json={"name": "Grandma\'s Secret Herbal Mix", "unit": "jar", "opening_stock": 4})
         assert r.status_code == 201, r.text
-        assert r.json()["name"] == "Grandma's Secret Herbal Mix"
-        # and it does NOT leak into the glossary or any other shop
-        assert "Grandma's Secret Herbal Mix" not in med_all
+        assert r.json()["name"] == "Grandma\'s Secret Herbal Mix"
+        # and it does NOT leak into the glossary, nor into the other shop's inventory
+        assert "Grandma\'s Secret Herbal Mix" not in med_all
+        assert [p["name"] for p in (await kir_c.get("/api/products")).json()] == []
 
 
 async def test_glossary_matches_singular_and_plural_forms():
@@ -173,7 +193,8 @@ async def test_glossary_matches_singular_and_plural_forms():
         pytest.skip("postgres not reachable")
     from app.main import app
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test",
+                           headers={"x-vd-app": "1"}) as c:
         h = await _client_and_shop(c, kind="kirana")
         singular = (await c.get("/api/glossary", headers=h, params={"q": "battery"})).json()
         plural = (await c.get("/api/glossary", headers=h, params={"q": "batteries"})).json()
