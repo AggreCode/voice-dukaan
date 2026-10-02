@@ -37,7 +37,10 @@ class ExtractedItem(BaseModel):
     spoken_span: str
     product_id: str | None
     product_name_guess: str
-    quantity: float
+    # None when no quantity was spoken or written. It used to default to 1, which looked like a real
+    # answer: "basmati, marigold biscuit, tiger biscuit" became three lines of ONE each, and a
+    # shopkeeper skimming the bill had no way to tell the made-up ones from the said ones.
+    quantity: float | None
     unit: str  # the unit word as spoken/typed, lightly normalised (see prompt cheat sheet)
     unit_price: float | None
     alternatives: list[Alternative]

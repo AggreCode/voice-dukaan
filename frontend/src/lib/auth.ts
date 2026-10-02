@@ -7,6 +7,7 @@ const KEYS = {
   shopId: 'vd.shopId',
   shopName: 'vd.shopName',
   shopType: 'vd.shopType',
+  language: 'vd.language',
   username: 'vd.username',
   debug: 'vd.debug',
 } as const;
@@ -32,10 +33,15 @@ export const auth = {
   getShopName: () => get(KEYS.shopName),
   getShopType: () => get(KEYS.shopType),
   getUsername: () => get(KEYS.username),
-  remember(me: { shop: { id: string; name: string; type?: string }; user?: { username: string | null } }) {
+  getLanguage: () => get(KEYS.language),
+  remember(me: {
+    shop: { id: string; name: string; type?: string; default_language?: string };
+    user?: { username: string | null };
+  }) {
     set(KEYS.shopId, me.shop.id);
     set(KEYS.shopName, me.shop.name);
     set(KEYS.shopType, me.shop.type ?? null);
+    set(KEYS.language, me.shop.default_language ?? null);
     set(KEYS.username, me.user?.username ?? null);
     window.dispatchEvent(new Event('vd:auth'));
   },

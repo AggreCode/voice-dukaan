@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { TransactionOut } from '../lib/types';
 import { cx, fmtDate, fmtMoney, fmtQty, fmtTime, todayISO } from '../lib/utils';
 import { useToast } from '../components/Toast';
+import TopBar from '../components/TopBar';
 
 export default function Ledger() {
   const [day, setDay] = useState(todayISO());
@@ -44,8 +45,8 @@ export default function Ledger() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-6 pt-4">
-      <h1 className="mb-3 text-lg font-bold text-primary-dark">Ledger</h1>
+    <div className="mx-auto w-full max-w-md px-4 pb-28">
+      <TopBar title="Bills" subtitle="Every sale and stock-in" back="/report" />
 
       <div className="mb-3 flex items-center gap-2">
         <button type="button" onClick={() => shiftDay(-1)} className="min-h-[44px] min-w-[44px] rounded-lg border border-slate-300 bg-white text-lg" aria-label="Previous day">‹</button>

@@ -17,9 +17,17 @@ interface Props {
   knownProducts?: PickedProduct[];
   currentCode?: string | null;
   initialQuery?: string;
+  /**
+   * Buying only. A name that is not in the stock yet becomes a new item on the bill, created when
+   * the bill is saved with the prices typed on its line. Selling has no such option on purpose: a
+   * shop cannot sell what it does not have.
+   */
+  onNewName?: (name: string) => void;
 }
 
-export default function ProductPicker({ open, onClose, onSelect, alternatives = [], knownProducts = [], currentCode, initialQuery = '' }: Props) {
+export default function ProductPicker({
+  open, onClose, onSelect, alternatives = [], knownProducts = [], currentCode, initialQuery = '', onNewName,
+}: Props) {
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -66,14 +74,22 @@ export default function ProductPicker({ open, onClose, onSelect, alternatives = 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
-        className="flex max-h-[92vh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-2xl"
+        className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-center justify-between px-4 pt-3">
-          <h2 className="text-base font-semibold">Pick product</h2>
-          <button type="button" onClick={onClose} className="min-h-[44px] min-w-[44px] rounded-full text-2xl leading-none text-slate-500" aria-label="Close">
+        <div className="flex justify-center pt-2" aria-hidden>
+          <span className="h-1.5 w-12 rounded-full bg-slate-300" />
+        </div>
+        <div className="flex items-center justify-between px-4 pt-1">
+          <h2 className="text-xl font-extrabold">Which item?</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-3xl leading-none text-slate-600 active:bg-slate-200"
+            aria-label="Close"
+          >
             ×
           </button>
         </div>
@@ -83,10 +99,23 @@ export default function ProductPicker({ open, onClose, onSelect, alternatives = 
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search name / brand / alias…"
-            className="min-h-[48px] w-full rounded-xl border border-slate-300 px-3 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            placeholder="Type the item name…"
+            className="min-h-[56px] w-full rounded-2xl border-2 border-slate-300 px-4 text-lg focus:border-slate-500 focus:outline-none focus:ring-4 focus:ring-slate-200"
             inputMode="search"
           />
+          {onNewName && q.trim() && (
+            <button
+              type="button"
+              onClick={() => onNewName(q.trim())}
+              className="mt-2 flex min-h-[56px] w-full items-center gap-3 rounded-2xl bg-blue-600 px-4 text-left font-bold text-white active:bg-blue-700"
+            >
+              <span className="text-2xl leading-none">+</span>
+              <span className="min-w-0">
+                <span className="block truncate text-base">Add “{q.trim()}” as a new item</span>
+                <span className="block text-xs font-semibold text-white/80">Not in my stock yet</span>
+              </span>
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pb-[max(env(safe-area-inset-bottom),16px)]">
@@ -142,10 +171,10 @@ export default function ProductPicker({ open, onClose, onSelect, alternatives = 
                   <button
                     type="button"
                     onClick={() => onSelect(toPicked(p))}
-                    className={cx('flex min-h-[52px] w-full items-center gap-3 px-3 py-2 text-left', p.code === currentCode && 'bg-primary-light/60')}
+                    className={cx('flex min-h-[64px] w-full items-center gap-3 px-3 py-2 text-left active:bg-slate-50', p.code === currentCode && 'bg-primary-light/60')}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{p.name}</div>
+                      <div className="truncate text-lg font-bold">{p.name}</div>
                       {p.local_name && <div className="truncate text-sm text-slate-500">{p.local_name}</div>}
                       <div className="truncate text-xs text-slate-500">
                         {p.brand ? p.brand + ' · ' : ''}
@@ -159,7 +188,7 @@ export default function ProductPicker({ open, onClose, onSelect, alternatives = 
             </ul>
           )}
 
-          <div className="mt-4">
+          <div className={cx('mt-4', onNewName && 'hidden')}>
             {!showAdd ? (
               <button
                 type="button"

@@ -1,64 +1,54 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ActiveRecording, RecorderError, recordingSupport, startRecording } from '../lib/recorder';
-import { enqueueAndUpload, retryAll, usePendingCount } from '../lib/uploadQueue';
-import { cx, fmtElapsed, uuid } from '../lib/utils';
+import { useNavigate } from 'react-router-dom';
+import TopBar from '../components/TopBar';
+import { MicIcon } from '../components/Icons';
 import { useToast } from '../components/Toast';
-import { auth } from '../lib/auth';
-
+import { registerCapture } from '../lib/captureDraft';
+import { afterCue, startCue, stopCue } from '../lib/haptics';
+import { useLocal } from '../lib/labels';
+import { ActiveRecording, RecorderError, recordingSupport, startRecording } from '../lib/recorder';
+import { SIDE, THEME } from '../lib/theme';
 import { VoiceMode } from '../lib/types';
+import { enqueueAndUpload } from '../lib/uploadQueue';
+import { cx, fmtElapsed, uuid } from '../lib/utils';
 
 const WARN_MS = 75_000;
 const MAX_MS = 90_000;
 
 type Phase = 'idle' | 'starting' | 'recording' | 'uploading' | 'error';
-const STAGES: { at: number; label: string }[] = [
-  { at: 0, label: 'Uploading…' },
-  { at: 2500, label: 'Transcribing…' },
-  { at: 7000, label: 'Understanding…' },
-];
+const STAGES = ['Sending…', 'Listening to it…', 'Finding your items…'];
+const STAGE_AT = [0, 2500, 7000];
 
-const COPY: Record<VoiceMode, { tab: string; headline: string; example: string; hint: string }> = {
-  sale: {
-    tab: 'Selling',
-    headline: 'Speak the bill',
-    example: 'Paracetamol dasa gota, Crocin dui patta',
-    hint: 'Speak items, qty and price',
-  },
-  stock_in: {
-    tab: 'Buying',
-    headline: 'Speak the stock you received',
-    example: 'Paracetamol 10 strips, ORS 5 packets',
-    hint: 'Speak items, qty and cost',
-  },
+const COPY: Record<VoiceMode, { headline: string; example: string }> = {
+  sale: { headline: 'Speak the bill', example: '“Basmati do kilo, marigold teen packet, tiger biscuit”' },
+  stock_in: { headline: 'Speak what arrived', example: '“Basmati pachas kilo, cost sattar, bechne ka assi”' },
 };
 
-function parseMode(v: string | null | undefined): VoiceMode | null {
-  return v === 'stock_in' || v === 'sale' ? v : null;
-}
-
-export default function Record() {
+/**
+ * Speaking a bill, with the confirmation people already know from Google's microphone: a buzz and a
+ * rising chime when it starts listening, a falling one when it stops, and rings that grow with the
+ * voice so the shopkeeper can SEE it hearing them. The chime finishes before the microphone opens so
+ * it is never recorded as part of the bill.
+ */
+export default function Record({ mode }: { mode: VoiceMode }) {
   const nav = useNavigate();
   const toast = useToast();
-  const pending = usePendingCount();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const mode: VoiceMode = parseMode(searchParams.get('mode')) ?? 'sale';
-  // Same switch the scan screen has, in the same place: the three ways of starting a bill should not
-  // each have their own idea of how selling and buying are chosen.
-  const setMode = (m: VoiceMode) => setSearchParams(m === 'sale' ? {} : { mode: m }, { replace: true });
-  /** Mode captured when the current recording started. */
-  const recModeRef = useRef<VoiceMode>(mode);
+  const word = useLocal();
+  const theme = THEME[mode];
+  const side = SIDE[mode];
+  const copy = COPY[mode];
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [level, setLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState(0);
-  const [retrying, setRetrying] = useState(false);
 
   const recRef = useRef<ActiveRecording | null>(null);
   const timerRef = useRef<number>(0);
   const stoppingRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => () => void (mounted.current = false), []);
 
   const support = recordingSupport();
 
@@ -67,11 +57,18 @@ export default function Record() {
     timerRef.current = 0;
   };
 
+  const reset = () => {
+    setPhase('idle');
+    setElapsed(0);
+    setLevel(0);
+  };
+
   const stop = useCallback(async () => {
     const rec = recRef.current;
     if (!rec || stoppingRef.current) return;
     stoppingRef.current = true;
     clearTimer();
+    stopCue();
     setPhase('uploading');
     setStage(0);
     let result;
@@ -88,43 +85,36 @@ export default function Record() {
     stoppingRef.current = false;
 
     if (result.durationMs < 700 || result.blob.size < 1000) {
-      setPhase('idle');
-      setElapsed(0);
-      setLevel(0);
-      toast.show('Too short. Tap the mic and speak.');
+      reset();
+      toast.show('That was too short. Tap the mic, then speak.');
       return;
     }
 
-    const clientSessionId = uuid();
     try {
       const session = await enqueueAndUpload({
-        clientSessionId,
+        clientSessionId: uuid(),
         blob: result.blob,
         mimeType: result.mimeType,
         durationMs: result.durationMs,
-        mode: recModeRef.current,
+        mode,
       });
-      nav(`/review/${session.session_id}`, { replace: false });
+      registerCapture(session, mode, 'voice');
+      // Only take them to the bill if they are still waiting for it. Otherwise it is on Home.
+      if (mounted.current) nav(`/review/${session.session_id}`);
+      else toast.success('Your spoken bill is ready on Home.');
     } catch (e) {
-      setPhase('idle');
-      setElapsed(0);
-      setLevel(0);
-      const msg = e instanceof Error ? e.message : 'Upload failed';
-      toast.error(`Saved offline — will retry. (${msg})`);
+      if (mounted.current) reset();
+      toast.error(`No internet? It is saved and will send by itself. (${e instanceof Error ? e.message : 'upload failed'})`);
     }
-  }, [nav, toast]);
+  }, [mode, nav, toast]);
 
   const start = useCallback(async () => {
     setError(null);
-    recModeRef.current = mode;
     setPhase('starting');
+    startCue();
+    await afterCue();
     try {
-      const rec = await startRecording({
-        onLevel: (l) => setLevel(l),
-        onError: (e) => {
-          setError(e.message);
-        },
-      });
+      const rec = await startRecording({ onLevel: (l) => setLevel(l), onError: (e) => setError(e.message) });
       recRef.current = rec;
       setElapsed(0);
       setPhase('recording');
@@ -134,202 +124,129 @@ export default function Record() {
         if (ms >= MAX_MS) void stop();
       }, 200);
     } catch (e) {
-      const msg = e instanceof RecorderError ? e.message : (e as Error).message;
-      setError(msg);
+      setError(e instanceof RecorderError ? e.message : (e as Error).message);
       setPhase('error');
     }
-  }, [stop, mode]);
+  }, [stop]);
 
-  // Staged progress labels while the upload is in flight.
   useEffect(() => {
     if (phase !== 'uploading') return;
     const t0 = Date.now();
     const id = window.setInterval(() => {
       const ms = Date.now() - t0;
-      let s = 0;
-      STAGES.forEach((st, i) => {
-        if (ms >= st.at) s = i;
-      });
-      setStage(s);
+      setStage(STAGE_AT.reduce((s, at, i) => (ms >= at ? i : s), 0));
     }, 300);
     return () => window.clearInterval(id);
   }, [phase]);
 
-  useEffect(
-    () => () => {
-      clearTimer();
-      recRef.current?.cancel();
-    },
-    [],
-  );
+  useEffect(() => () => {
+    clearTimer();
+    recRef.current?.cancel();
+  }, []);
 
   const onTap = () => {
     if (phase === 'idle' || phase === 'error') void start();
     else if (phase === 'recording') void stop();
   };
 
-  const onRetry = async () => {
-    setRetrying(true);
-    try {
-      const r = await retryAll();
-      if (r.uploaded.length) {
-        toast.success(`Uploaded ${r.uploaded.length} recording(s)`);
-        if (r.uploaded.length === 1) nav(`/review/${r.uploaded[0].session_id}`);
-      } else if (r.failed.length) {
-        toast.error(`Still failing: ${r.failed[0].error}`);
-      }
-    } finally {
-      setRetrying(false);
-    }
-  };
-
-  const warn = elapsed >= WARN_MS;
   const recording = phase === 'recording';
-  const ringScale = 1 + level * 0.35;
-  const copy = COPY[mode];
+  const warn = elapsed >= WARN_MS;
+  const bars = [0.55, 0.85, 1, 0.85, 0.55];
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-md flex-col px-5 pb-6 pt-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Mo Dokan'}</h1>
-          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Speak · buying' : 'Speak · selling'}</p>
-        </div>
-        {pending > 0 && (
-          <button
-            type="button"
-            onClick={onRetry}
-            disabled={retrying}
-            className="flex min-h-[44px] items-center gap-2 rounded-full bg-amber-100 px-3 text-xs font-semibold text-amber-800 disabled:opacity-60"
-          >
-            <span className="rounded-full bg-amber-500 px-1.5 text-white">{pending}</span>
-            pending · {retrying ? 'retrying…' : 'Retry'}
-          </button>
-        )}
-      </header>
-
-      <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-        {(['sale', 'stock_in'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            aria-pressed={mode === m}
-            disabled={recording || phase === 'uploading'}
-            className={cx(
-              'min-h-[44px] rounded-lg text-sm font-semibold disabled:opacity-60',
-              mode === m ? 'bg-white text-primary shadow' : 'text-slate-600',
-            )}
-          >
-            {COPY[m].tab}
-          </button>
-        ))}
-      </div>
-      <h2 className="mt-4 text-center text-xl font-bold text-slate-800">{copy.headline}</h2>
+    <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col px-4 pb-24">
+      <TopBar title={copy.headline} subtitle={word('speak')} back={`/${side}`} mode={mode} />
 
       {!support.ok && (
-        <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{support.error.message}</div>
+        <div className="rounded-2xl bg-red-50 p-4 font-semibold text-red-800">{support.error.message}</div>
       )}
 
-      <div className="flex flex-1 flex-col items-center justify-center py-8">
-        <div className="relative flex items-center justify-center">
-          {/* level ring */}
-          <div
-            aria-hidden
-            className={cx(
-              'absolute rounded-full transition-transform duration-75',
-              recording ? (warn ? 'bg-amber-300/40' : 'bg-primary/20') : 'bg-transparent',
-            )}
-            style={{ width: 260, height: 260, transform: `scale(${recording ? ringScale : 1})` }}
-          />
-          <div
-            aria-hidden
-            className={cx('absolute rounded-full', recording ? (warn ? 'bg-amber-300/30' : 'bg-primary/10') : 'bg-transparent')}
-            style={{ width: 260, height: 260, transform: `scale(${recording ? 1 + level * 0.7 : 1})`, transition: 'transform 120ms' }}
-          />
+      <div className="flex flex-1 flex-col items-center justify-center py-4">
+        <div className="relative flex h-[300px] w-[300px] items-center justify-center">
+          {/* three rings that breathe with the voice, Google style */}
+          {[1.0, 0.75, 0.5].map((weight, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className={cx(
+                'absolute inset-0 m-auto rounded-full transition-transform duration-100',
+                recording ? (warn ? 'bg-amber-400' : theme.dot) : 'bg-transparent',
+              )}
+              style={{
+                width: 200,
+                height: 200,
+                opacity: recording ? 0.12 + i * 0.06 : 0,
+                transform: `scale(${recording ? 1 + level * weight * 0.55 + i * 0.08 : 1})`,
+              }}
+            />
+          ))}
+          {recording && <span aria-hidden className={cx('absolute h-[220px] w-[220px] animate-ping rounded-full opacity-20', theme.dot)} />}
+
           <button
             type="button"
             onClick={onTap}
             disabled={!support.ok || phase === 'starting' || phase === 'uploading'}
-            aria-label={recording ? 'Stop recording' : 'Start recording'}
+            aria-label={recording ? 'Stop' : 'Start speaking'}
             className={cx(
-              'relative flex h-[220px] w-[220px] flex-col items-center justify-center rounded-full text-white shadow-xl transition-colors focus:outline-none focus:ring-4 focus:ring-primary/40 disabled:opacity-70',
-              recording ? (warn ? 'bg-amber-500' : 'bg-red-600') : 'bg-primary active:bg-primary-dark',
+              'relative flex h-[200px] w-[200px] flex-col items-center justify-center rounded-full shadow-2xl transition-transform focus:outline-none active:scale-95 disabled:opacity-80',
+              recording ? (warn ? 'bg-amber-500 text-white' : 'bg-red-600 text-white') : cx(theme.gradient),
             )}
           >
             {phase === 'uploading' ? (
-              <Spinner />
+              <span className="h-16 w-16 animate-spin rounded-full border-[6px] border-white/30 border-t-white" />
             ) : recording ? (
-              <span className="h-16 w-16 rounded-lg bg-white" />
+              <span className="flex h-16 items-end gap-1.5">
+                {bars.map((b, i) => (
+                  <span
+                    key={i}
+                    className="w-3 rounded-full bg-white transition-all duration-100"
+                    style={{ height: `${Math.max(14, Math.min(64, 14 + level * 120 * b))}px` }}
+                  />
+                ))}
+              </span>
             ) : (
-              <MicBig />
+              <MicIcon className="h-24 w-24" />
             )}
-            <span className="mt-3 text-base font-semibold">
-              {phase === 'uploading' ? 'Working…' : recording ? 'Stop' : phase === 'starting' ? 'Starting…' : 'Tap to record'}
+            <span className="mt-2 text-lg font-extrabold">
+              {phase === 'uploading' ? 'Reading…' : recording ? 'Tap to stop' : phase === 'starting' ? 'Get ready…' : 'Tap & speak'}
             </span>
           </button>
         </div>
 
-        <div className="mt-8 h-16 text-center">
+        <div className="mt-2 min-h-[96px] w-full text-center">
           {recording && (
             <>
-              <div className={cx('font-mono text-4xl font-bold tabular-nums', warn ? 'text-amber-600' : 'text-slate-800')}>{fmtElapsed(elapsed)}</div>
-              <div className="text-xs text-slate-500">{warn ? `Stopping at ${MAX_MS / 1000}s. Finish soon.` : copy.hint}</div>
+              <p className={cx('text-xl font-extrabold', warn ? 'text-amber-600' : 'text-red-600')}>● Listening… speak now</p>
+              <p className="font-mono text-3xl font-bold tabular-nums text-slate-800">{fmtElapsed(elapsed)}</p>
+              {warn && <p className="text-sm font-semibold text-amber-700">Stopping at {MAX_MS / 1000} seconds — finish up.</p>}
             </>
           )}
           {phase === 'uploading' && (
-            <div>
-              <div className="text-lg font-semibold text-primary-dark">{STAGES[stage].label}</div>
-              <div className="mx-auto mt-2 flex w-40 gap-1">
+            <>
+              <p className={cx('text-xl font-extrabold', theme.text)}>{STAGES[stage]}</p>
+              <div className="mx-auto mt-2 flex w-48 gap-1.5">
                 {STAGES.map((_, i) => (
-                  <span key={i} className={cx('h-1.5 flex-1 rounded', i <= stage ? 'bg-primary' : 'bg-slate-200')} />
+                  <span key={i} className={cx('h-2 flex-1 rounded-full', i <= stage ? theme.dot : 'bg-slate-200')} />
                 ))}
               </div>
-              <div className="mt-1 text-xs text-slate-500">This takes 5–20 seconds</div>
-            </div>
+              <p className="mt-1 text-sm text-slate-500">Takes about 10 seconds. You can serve a customer meanwhile.</p>
+            </>
           )}
-          {phase === 'idle' && (
-            <p className="px-6 text-sm text-slate-500">
-              e.g. “{copy.example}”
-            </p>
+          {(phase === 'idle' || phase === 'starting') && (
+            <>
+              <p className="text-base font-semibold text-slate-700">Say it like you tell your helper:</p>
+              <p className={cx('mt-1 text-lg font-bold', theme.textDark)}>{copy.example}</p>
+            </>
           )}
-          {phase === 'error' && error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {phase === 'error' && error && (
+            <p className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-800">{error}</p>
+          )}
         </div>
-
-        {/* The other way in. A customer who hands over a written list is faster to photograph than to
-            read out, so scanning is offered here as an equal, not hidden in a menu. */}
-        {(phase === 'idle' || phase === 'error') && (
-          <button
-            type="button"
-            onClick={() => nav(mode === 'stock_in' ? '/scan?mode=stock_in' : '/scan')}
-            className="mt-2 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-primary/40 bg-white text-sm font-bold text-primary shadow-sm active:bg-primary-light/40"
-          >
-            <CameraIcon className="h-5 w-5" />
-            {mode === 'stock_in' ? 'Photograph the bill instead' : 'Photograph a paper list instead'}
-          </button>
-        )}
       </div>
+
+      <p className={cx('rounded-2xl p-3 text-sm font-semibold', theme.soft, theme.textDark)}>
+        💡 Names alone are fine. Quantity and price can be filled in on the next screen.
+      </p>
     </div>
   );
-}
-
-function CameraIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2a2 2 0 0 0 1.7-1l.5-.8a1 1 0 0 1 .85-.5h4.5a1 1 0 0 1 .85.5l.5.8a2 2 0 0 0 1.7 1h1.2A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-9z" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
-  );
-}
-
-function MicBig() {
-  return (
-    <svg className="h-20 w-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
-    </svg>
-  );
-}
-function Spinner() {
-  return <span className="h-16 w-16 animate-spin rounded-full border-4 border-white/40 border-t-white" />;
 }

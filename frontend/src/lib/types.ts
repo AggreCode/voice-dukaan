@@ -112,7 +112,8 @@ export interface ExtractedItem {
   spoken_span: string;
   product_id: string | null; // product CODE like p001
   product_name_guess: string;
-  quantity: number;
+  /** null when nothing was said or written for it. Never defaulted: the shopkeeper fills it in. */
+  quantity: number | null;
   unit: string;
   unit_raw: string;
   unit_price: number | null;
@@ -186,6 +187,8 @@ export interface TransactionItemIn {
   qty: number;
   unit: string;
   unit_price: number;
+  /** Buying only: the price this product will now sell at. */
+  sell_price?: number | null;
   spoken_span: string | null;
   llm_product_code: string | null;
   llm_confidence: number | null;
@@ -341,7 +344,7 @@ export function normalizeSession(s: VoiceSessionOut): VoiceSessionOut {
           ...s.extraction,
           items: (s.extraction.items || []).map((it) => ({
             ...it,
-            quantity: num(it.quantity, 1),
+            quantity: numOrNull(it.quantity),
             unit_price: it.unit_price === null || it.unit_price === undefined ? null : num(it.unit_price),
             confidence: num(it.confidence),
             alternatives: (it.alternatives || []).map((a) => ({ ...a, confidence: num(a.confidence) })),
@@ -406,4 +409,56 @@ export interface AdminShopDetail {
   users: AdminUser[];
   recent_bills: AdminBill[];
   low_stock: string[];
+}
+
+// ---- report ----
+export interface AnalyticsTotals {
+  sales: number;
+  bills: number;
+  purchases: number;
+  purchase_bills: number;
+  profit: number;
+  /** Share of sales money whose cost price is known, 0..1. Profit only covers that share. */
+  profit_coverage: number;
+}
+
+export interface DayPoint {
+  date: string;
+  sales: number;
+  bills: number;
+}
+
+export interface ProductStat {
+  code: string;
+  name: string;
+  local_name: string | null;
+  unit: string;
+  qty: number;
+  revenue: number;
+  times: number;
+  profit: number | null;
+}
+
+export interface MarginStat {
+  code: string;
+  name: string;
+  local_name: string | null;
+  unit: string;
+  sell_price: number;
+  cost_price: number;
+  margin: number;
+  margin_pct: number;
+  stock_qty: number;
+}
+
+export interface AnalyticsOut {
+  days: number;
+  since: string;
+  totals: AnalyticsTotals;
+  daily: DayPoint[];
+  top_revenue: ProductStat[];
+  top_frequency: ProductStat[];
+  top_margin: MarginStat[];
+  low_stock: { code: string; name: string; unit: string; stock_qty: number; low_stock_threshold: number }[];
+  stock_value: { at_cost: number; at_sell: number; products: number; missing_prices: number };
 }

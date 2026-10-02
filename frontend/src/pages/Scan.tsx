@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import TopBar from '../components/TopBar';
+import { registerCapture } from '../lib/captureDraft';
+import { useLocal } from '../lib/labels';
+import { SIDE, THEME } from '../lib/theme';
 import { useToast } from '../components/Toast';
-import { auth } from '../lib/auth';
 import { MAX_PHOTOS, PhotoError, PreparedPhoto, fmtBytes, preparePhoto, releasePhoto } from '../lib/imageCapture';
 import { VoiceMode } from '../lib/types';
-import { enqueueAndUploadScan, retryAll, usePendingCount } from '../lib/uploadQueue';
+import { enqueueAndUploadScan } from '../lib/uploadQueue';
 import { cx, uuid } from '../lib/utils';
 
 type Phase = 'idle' | 'preparing' | 'ready' | 'uploading' | 'error';
@@ -33,25 +36,21 @@ const COPY: Record<VoiceMode, { tab: string; headline: string; sub: string; read
   },
 };
 
-function parseMode(v: string | null | undefined): VoiceMode | null {
-  return v === 'stock_in' || v === 'sale' ? v : null;
-}
 
-export default function Scan() {
+export default function Scan({ mode }: { mode: VoiceMode }) {
   const nav = useNavigate();
   const toast = useToast();
-  const pending = usePendingCount();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const mode: VoiceMode = parseMode(searchParams.get('mode')) ?? 'sale';
-  // Kept in the URL so the choice survives a reload, a share and the back button.
-  const setMode = (m: VoiceMode) => setSearchParams(m === 'sale' ? {} : { mode: m }, { replace: true });
+  const word = useLocal();
+  const theme = THEME[mode];
+  const side = SIDE[mode];
+  const mounted = useRef(true);
+  useEffect(() => () => void (mounted.current = false), []);
 
   const [photos, setPhotos] = useState<PreparedPhoto[]>([]);
   const [selected, setSelected] = useState(0);
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState(0);
-  const [retrying, setRetrying] = useState(false);
 
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -109,7 +108,12 @@ export default function Scan() {
     const clientSessionId = uuid();
     try {
       const session = await enqueueAndUploadScan({ clientSessionId, photos: photos.map((p) => p.blob), mode });
+      registerCapture(session, mode, 'photo');
       photos.forEach(releasePhoto);
+      if (!mounted.current) {
+        toast.success('Your photo bill is ready on Home.');
+        return;
+      }
       setPhotos([]);
       nav(`/review/${session.session_id}`);
     } catch (e) {
@@ -133,65 +137,15 @@ export default function Scan() {
     return () => window.clearInterval(id);
   }, [phase]);
 
-  const onRetry = async () => {
-    setRetrying(true);
-    try {
-      const r = await retryAll();
-      if (r.uploaded.length) {
-        toast.success(`Uploaded ${r.uploaded.length} capture(s)`);
-        if (r.uploaded.length === 1) nav(`/review/${r.uploaded[0].session_id}`);
-      } else if (r.failed.length) {
-        toast.error(`Still failing: ${r.failed[0].error}`);
-      }
-    } finally {
-      setRetrying(false);
-    }
-  };
 
   const busy = phase === 'uploading' || phase === 'preparing';
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-md flex-col px-5 pb-6 pt-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-primary-dark">{auth.getShopName() ?? 'Mo Dokan'}</h1>
-          <p className="text-xs text-slate-500">{mode === 'stock_in' ? 'Scan · buying' : 'Scan · selling'}</p>
-        </div>
-        {pending > 0 && (
-          <button
-            type="button"
-            onClick={onRetry}
-            disabled={retrying}
-            className="flex min-h-[44px] items-center gap-2 rounded-full bg-amber-100 px-3 text-xs font-semibold text-amber-800 disabled:opacity-60"
-          >
-            <span className="rounded-full bg-amber-500 px-1.5 text-white">{pending}</span>
-            pending · {retrying ? 'retrying…' : 'Retry'}
-          </button>
-        )}
-      </header>
+    <div className="mx-auto flex min-h-[100dvh] w-full max-w-md flex-col px-4 pb-24">
+      <TopBar title={copy.headline} subtitle={word('photo')} back={`/${side}`} mode={mode} />
 
-      {/* One photo flow, two meanings. The shopkeeper says which before shooting, and nothing else
-          about the photo changes: buying reads the rate column, selling leaves pricing to them. */}
-      <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-        {(['sale', 'stock_in'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            aria-pressed={mode === m}
-            className={cx(
-              'min-h-[44px] rounded-lg text-sm font-semibold',
-              mode === m ? 'bg-white text-primary shadow' : 'text-slate-600',
-            )}
-          >
-            {COPY[m].tab}
-          </button>
-        ))}
-      </div>
-
-      <h2 className="mt-4 text-center text-xl font-bold text-slate-800">{copy.headline}</h2>
-      <p className="mx-auto mt-1 max-w-[19rem] text-center text-sm text-slate-500">{copy.sub}</p>
-      <p className="mx-auto mt-2 max-w-[19rem] rounded-lg bg-white px-3 py-1.5 text-center text-[11px] font-medium text-slate-600 shadow-sm">
+      <p className="text-center text-base font-semibold text-slate-700">{copy.sub}</p>
+      <p className={cx('mx-auto mt-2 rounded-xl px-3 py-2 text-center text-sm font-semibold', theme.soft, theme.textDark)}>
         {copy.reads}
       </p>
 
@@ -225,12 +179,12 @@ export default function Scan() {
             type="button"
             onClick={() => cameraRef.current?.click()}
             disabled={busy}
-            className="flex h-[230px] w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-primary/40 bg-white text-primary shadow-sm active:bg-primary-light/40 disabled:opacity-60"
+            className={cx('flex h-[250px] w-full flex-col items-center justify-center gap-3 rounded-3xl border-[3px] border-dashed bg-white shadow-sm active:scale-[0.99] disabled:opacity-60', theme.softBorder, theme.text)}
           >
-            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary text-white shadow-lg">
+            <span className={cx('flex h-24 w-24 items-center justify-center rounded-full shadow-lg', theme.solid)}>
               <CameraIcon className="h-10 w-10" />
             </span>
-            <span className="text-base font-bold">{phase === 'preparing' ? 'Preparing…' : 'Take a photo'}</span>
+            <span className="text-2xl font-extrabold">{phase === 'preparing' ? 'Preparing…' : 'Take a photo'}</span>
             <span className="text-xs text-slate-500">Up to {MAX_PHOTOS} pages</span>
           </button>
           <button
@@ -313,7 +267,7 @@ export default function Scan() {
               type="button"
               onClick={send}
               disabled={busy}
-              className="mt-4 min-h-[56px] w-full rounded-2xl bg-primary text-lg font-bold text-white shadow-lg active:bg-primary-dark disabled:opacity-60"
+              className={cx('mt-4 min-h-[64px] w-full rounded-2xl text-xl font-extrabold shadow-lg disabled:opacity-60', theme.solid, theme.solidActive)}
             >
               {phase === 'preparing' ? 'Preparing…' : copy.cta}
             </button>

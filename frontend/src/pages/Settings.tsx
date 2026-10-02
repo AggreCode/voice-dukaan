@@ -7,6 +7,7 @@ import { CSV_COLUMNS } from '../lib/constants';
 import { cx } from '../lib/utils';
 import { usePendingCount } from '../lib/uploadQueue';
 import { useToast } from '../components/Toast';
+import TopBar from '../components/TopBar';
 
 export default function Settings() {
   /**
@@ -47,8 +48,8 @@ export default function Settings() {
   const shopType = me.data?.type ?? auth.getShopType() ?? '—';
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-6 pt-4">
-      <h1 className="mb-4 text-lg font-bold text-primary-dark">Settings</h1>
+    <div className="mx-auto w-full max-w-md px-4 pb-28">
+      <TopBar title="More" subtitle="Shop, password and sign out" back="/" />
 
       <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Shop</p>

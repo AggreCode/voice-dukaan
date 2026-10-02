@@ -54,6 +54,7 @@ def test_silent_default_quantity_one_is_flagged():
     out = apply_guards(_bill(_item(spoken_span="ପାରାସିଟାମଲ୍ସ ଗୋଟା", quantity=1, confidence=0.95)),
                        transcript="ପାରାସିଟାମଲ୍ସ ଗୋଟା ଆଉ ଡୋଲୋ ଦୁଇଟା ପତା", catalog=_snap())
     assert out.items[0].needs_review and "no_quantity" in out.items[0].reason
+    assert out.items[0].quantity is None, "a 1 nobody said is not kept"
 
 
 def test_spoken_counter_quantity_not_flagged():
@@ -86,10 +87,32 @@ def test_price_without_evidence_removed():
     assert out.items[0].unit_price is None and "price_without_evidence" in out.items[0].reason
 
 
-def test_quantity_without_evidence_flagged():
+def test_a_quantity_the_words_do_not_support_is_dropped_not_kept():
+    """Nobody said three. An empty box the shopkeeper fills is better than a confident wrong number,
+    which used to survive here with only a flag on it."""
     out = apply_guards(_bill(_item(spoken_span="crocin patta", product_id="p002", quantity=3)),
                        transcript="crocin patta", catalog=_snap())
-    assert "no_quantity_evidence" in out.items[0].reason
+    assert out.items[0].quantity is None
+    assert "no_quantity" in out.items[0].reason and out.items[0].needs_review
+
+
+def test_a_bare_list_of_names_comes_through_with_nothing_invented():
+    """The case a shopkeeper actually brings: just the names, numbers to follow."""
+    out = apply_guards(
+        _bill(_item(spoken_span="basmati", product_id="p001", quantity=None, unit="", confidence=0.9),
+              _item(spoken_span="marigold biscuit", product_id="p002", quantity=None, unit="", confidence=0.9)),
+        transcript="basmati, marigold biscuit", catalog=_snap())
+    assert [i.quantity for i in out.items] == [None, None]
+    assert [i.unit for i in out.items] == ["", ""]
+    assert all(i.unit_price is None for i in out.items)
+    assert all(i.product_id for i in out.items), "the names still match the shop's products"
+
+
+def test_a_spoken_number_word_keeps_its_quantity():
+    out = apply_guards(_bill(_item(spoken_span="chini dui kilo", product_id="p001", quantity=2, unit="kg",
+                                   confidence=0.95)),
+                       transcript="chini dui kilo", catalog=_snap())
+    assert out.items[0].quantity == 2
 
 
 def test_alternatives_cleaned():

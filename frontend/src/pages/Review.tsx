@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ItemRow from '../components/ItemRow';
+import { PlusIcon } from '../components/Icons';
 import ProductPicker from '../components/ProductPicker';
+import TopBar from '../components/TopBar';
 import TranscriptPanel from '../components/TranscriptPanel';
 import { useToast } from '../components/Toast';
-import { confidenceLevel } from '../components/ConfidenceBadge';
 import { api, ApiError } from '../lib/api';
 import { auth } from '../lib/auth';
+import { DraftSource, clearDraft, loadDraft, saveDraft } from '../lib/drafts';
+import { doneCue } from '../lib/haptics';
 import {
-  PickedProduct, ReviewItem, buildReviewItems, defaultUnitPrice, lineTotal, newBlankItem, priceKindFor, round2, toPicked,
+  Missing, PickedProduct, ReviewItem, buildReviewItems, defaultUnitPrice, intentFor, lineTotal, missingFields,
+  newBlankItem, newItemName, priceKindFor, round2, toPicked,
 } from '../lib/reviewModel';
-
-/** The name a not-yet-known line would be created under, or "" when there is nothing to go on. */
-function newItemName(it: ReviewItem): string {
-  return (it.original?.product_name_guess ?? '').trim();
-}
+import { SIDE, THEME } from '../lib/theme';
 import { PaymentMode, TransactionIn, VoiceSessionOut, normalizeSession } from '../lib/types';
 import { cacheSession, getCachedSession } from '../lib/uploadQueue';
 import { cx, fmtMoney } from '../lib/utils';
@@ -23,7 +23,6 @@ import { cx, fmtMoney } from '../lib/utils';
 export default function Review() {
   const { sessionId = '' } = useParams();
   const nav = useNavigate();
-  const toast = useToast();
   const qc = useQueryClient();
 
   const session = useQuery({
@@ -40,47 +39,61 @@ export default function Review() {
   });
 
   if (session.isLoading) {
-    return <Shell><p className="py-10 text-center text-slate-500">Loading session…</p></Shell>;
+    return (
+      <div className="mx-auto w-full max-w-md px-4 pt-4">
+        <TopBar title="Opening bill…" back="/" />
+        <p className="py-10 text-center text-slate-500">Opening your bill…</p>
+      </div>
+    );
   }
   if (session.isError || !session.data) {
     return (
-      <Shell>
-        <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
-          Could not load session: {(session.error as Error)?.message ?? 'unknown'}
+      <div className="mx-auto w-full max-w-md px-4 pt-4">
+        <TopBar title="Bill" back="/" />
+        <div className="rounded-2xl bg-red-50 p-4 text-red-800">
+          <p className="font-bold">This bill could not be opened.</p>
+          <p className="mt-1 text-sm">{(session.error as Error)?.message ?? 'Unknown problem'}</p>
           <div className="mt-3 flex gap-2">
-            <button type="button" onClick={() => session.refetch()} className="min-h-[44px] flex-1 rounded-lg border border-red-300 bg-white font-medium">Retry</button>
-            <Link to="/" className="flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-primary font-semibold text-white">Record again</Link>
+            <button type="button" onClick={() => session.refetch()} className="min-h-[52px] flex-1 rounded-xl border-2 border-red-300 bg-white font-bold">Try again</button>
+            <Link to="/" className="flex min-h-[52px] flex-1 items-center justify-center rounded-xl bg-slate-900 font-bold text-white">Home</Link>
           </div>
         </div>
-      </Shell>
+      </div>
     );
   }
 
+  const side = SIDE[session.data.mode];
   return (
     <ReviewForm
       key={session.data.session_id + ':' + session.data.status}
       session={session.data}
+      backTo={`/${side}`}
       onSaved={(r) => {
         void qc.invalidateQueries({ queryKey: ['transactions'] });
         void qc.invalidateQueries({ queryKey: ['products'] });
+        void qc.invalidateQueries({ queryKey: ['analytics'] });
         void cacheSession({ ...session.data!, status: 'saved' });
-        if (r.type === 'purchase') {
-          toast.success(`Stock added: ${r.count} item${r.count === 1 ? '' : 's'}`);
-          nav('/products', { replace: true });
-        } else {
-          toast.success(`Bill saved: ${fmtMoney(r.total)}`);
-          nav('/ledger', { replace: true });
-        }
+        nav(`/${side}?saved=${r.total}&n=${r.count}`, { replace: true });
       }}
     />
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto w-full max-w-md px-4 pb-6 pt-4">{children}</div>;
-}
-
 export type SavedInfo = { id: string; total: number; type: 'sale' | 'purchase'; count: number };
+
+const PAYMENT: { value: PaymentMode; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'credit', label: 'Udhaar' },
+];
+
+const MISSING_WORDS: Record<Missing, string> = {
+  product: 'item',
+  qty: 'quantity',
+  unit: 'unit',
+  price: 'price',
+  sell: 'selling price',
+};
 
 export function ReviewForm({
   session,
@@ -89,27 +102,39 @@ export function ReviewForm({
 }: {
   session: VoiceSessionOut;
   onSaved: (r: SavedInfo) => void;
-  /** Where the "back" link goes. Defaults to the way this bill was captured. */
-  backTo?: { to: string; label: string };
+  /** Where Back goes: the Buy or Sell screen this bill was started from. */
+  backTo: string;
 }) {
   const toast = useToast();
+  const nav = useNavigate();
+  const mode = session.mode;
+  const theme = THEME[mode];
+  const intent = intentFor(mode);
+  const buying = intent === 'purchase';
+  const kind = priceKindFor(intent);
   const ext = session.extraction;
-  const isStockIn = session.mode === 'stock_in';
-  // Stock-in recordings are always purchases, whatever the extraction thought.
-  const initialIntent: 'sale' | 'purchase' = isStockIn || ext?.intent === 'purchase' ? 'purchase' : 'sale';
-  const intentHint = !isStockIn && ext && (ext.intent === 'stock_query' || ext.intent === 'unknown');
+  const manual = !session.session_id;
+  const source: DraftSource = manual ? 'manual' : session.input_kind === 'image' ? 'photo' : 'voice';
+  const draftKey = session.session_id || `manual-${mode}`;
+  const draftRoute = manual ? `/${SIDE[mode]}/type` : `/review/${session.session_id}`;
+  const editable = manual || session.status === 'extracted' || session.status === 'needs_manual';
 
-  const [intent, setIntentState] = useState<'sale' | 'purchase'>(initialIntent);
-  const priceKind = priceKindFor(intent);
-  const [items, setItems] = useState<ReviewItem[]>(() => buildReviewItems(session, priceKindFor(initialIntent)));
-  const [deleted, setDeleted] = useState<number[]>([]);
-  const [payment, setPayment] = useState<PaymentMode>(ext?.payment_mode === 'upi' || ext?.payment_mode === 'credit' ? ext.payment_mode : 'cash');
-  const [customer, setCustomer] = useState(ext?.customer_name ?? '');
-  const [notes, setNotes] = useState(ext?.notes ?? '');
+  // A bill left half-done comes back exactly as it was, whichever way it was started.
+  const restored = useMemo(() => (session.status === 'saved' ? null : loadDraft(draftKey)), [draftKey, session.status]);
+
+  const [items, setItems] = useState<ReviewItem[]>(
+    () => restored?.items ?? (manual ? [newBlankItem()] : buildReviewItems(session, kind)),
+  );
+  const [deleted, setDeleted] = useState<number[]>(() => restored?.deleted ?? []);
+  const [payment, setPayment] = useState<PaymentMode>(
+    () => restored?.payment ?? (ext?.payment_mode === 'upi' || ext?.payment_mode === 'credit' ? ext.payment_mode : 'cash'),
+  );
+  const [customer, setCustomer] = useState(() => restored?.customer ?? ext?.customer_name ?? '');
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
   const [debug, setDebug] = useState(auth.isDebug());
-  const [confirmAnyway, setConfirmAnyway] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     const h = () => setDebug(auth.isDebug());
@@ -117,34 +142,74 @@ export function ReviewForm({
     return () => window.removeEventListener('vd:debug', h);
   }, []);
 
+  const total = useMemo(() => round2(items.reduce((s, i) => s + lineTotal(i), 0)), [items]);
+
+  // ---- keep the bill on the phone while it is being worked on ----
+  useEffect(() => {
+    if (session.status === 'failed' || session.status === 'no_speech' || session.status === 'no_text') {
+      clearDraft(draftKey);
+      return;
+    }
+    if (!editable) return;
+    const t = window.setTimeout(() => {
+      const touched = items.some((i) => i.product || newItemName(i) || i.qty || i.unit_price) || customer.trim();
+      if (manual && !touched) {
+        clearDraft(draftKey);
+        return;
+      }
+      const names = items.map((i) => i.product?.name || newItemName(i)).filter(Boolean);
+      saveDraft(
+        {
+          key: draftKey, route: draftRoute, mode, source, items: items.length, total,
+          preview: names.slice(0, 3).join(', ') + (names.length > 3 ? '…' : ''), updatedAt: Date.now(),
+        },
+        { items, deleted, payment, customer },
+      );
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [items, deleted, payment, customer, total, draftKey, draftRoute, mode, source, manual, editable, session.status]);
+
+  // ---- what is left to fill ----
+  const newKeys = new Set(buying ? items.filter((i) => !i.product && !!newItemName(i)).map((i) => i.key) : []);
+  const gaps = items.map((i) => missingFields(i, intent));
+  const gapCount = gaps.reduce((s, g) => s + g.length, 0);
+  const gapKinds = Array.from(new Set(gaps.flat()));
+  const newCount = newKeys.size;
+
   const knownProducts = useMemo<PickedProduct[]>(() => session.review_products.map(toPicked), [session.review_products]);
   const activeItem = items.find((i) => i.key === activeKey) ?? null;
   const pickerItem = items.find((i) => i.key === pickerFor) ?? null;
 
-  const total = useMemo(() => round2(items.reduce((s, i) => s + lineTotal(i), 0)), [items]);
-  const isPurchase = intent === 'purchase';
   /**
-   * Stocking in is how a product first enters the inventory, so an unmatched line on a purchase is a
-   * NEW item, not an error: saving creates it with this bill's rate as its cost. On a sale the old
-   * rule stands, because a shop cannot sell what it does not have on its shelves.
+   * Before anything is created, ask the shop's own inventory whether these names are already on the
+   * shelf under different wording. The wholesaler writes "Rice (Premium) 25kg", the shop calls it
+   * "Rice", and stocking in must add to the one that exists rather than start a second row for it.
    */
-  const newItems = isPurchase ? items.filter((i) => !i.product && !!newItemName(i)) : [];
-  const newKeys = new Set(newItems.map((i) => i.key));
-  const blockingRows = items.filter((i) => !i.product && !newKeys.has(i.key));
-  const missingProduct = blockingRows.length > 0;
-  const redRows = items.filter(
-    (i) => !newKeys.has(i.key) && confidenceLevel(i.original?.confidence ?? 1, !!i.product) === 'red',
-  ).length;
-  const canSave = items.length > 0 && !missingProduct;
+  const newNames = useMemo(
+    () => Array.from(new Set(items.filter((i) => newKeys.has(i.key)).map(newItemName).filter(Boolean))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, buying],
+  );
+  const suggestions = useQuery({
+    queryKey: ['product-match', newNames],
+    queryFn: () => api.products.match(newNames),
+    enabled: buying && newNames.length > 0,
+    staleTime: 60_000,
+  });
+  const suggestionFor = (it: ReviewItem): PickedProduct | null => {
+    const best = suggestions.data?.find((m) => m.name === newItemName(it))?.candidates[0];
+    return best ? toPicked(best) : null;
+  };
 
-  /** Switching sale/purchase re-defaults prices the user has not typed (sell vs cost price). */
-  const setIntent = (t: 'sale' | 'purchase') => {
-    if (t === intent) return;
-    setIntentState(t);
-    const kind = priceKindFor(t);
-    setItems((prev) =>
-      prev.map((i) => (i.priceTouched ? i : { ...i, unit_price: defaultUnitPrice(i.product, kind) ?? i.unit_price })),
-    );
+  /** The products a line could mean, resolved to real catalog rows, each with the shop's own price. */
+  const choicesFor = (it: ReviewItem): PickedProduct[] => {
+    const codes = (it.original?.alternatives ?? []).map((a) => a.product_id);
+    if (it.product) codes.unshift(it.product.code);
+    const seen = new Set<string>();
+    return codes
+      .filter((c) => !seen.has(c) && seen.add(c))
+      .map((code) => knownProducts.find((p) => p.code === code))
+      .filter((p): p is PickedProduct => !!p);
   };
 
   const updateItem = (key: string, next: ReviewItem) => setItems((prev) => prev.map((i) => (i.key === key ? next : i)));
@@ -163,18 +228,26 @@ export function ReviewForm({
     setItems((prev) =>
       prev.map((i) => {
         if (i.key !== key) return i;
-        const price = i.priceTouched ? i.unit_price : defaultUnitPrice(p, priceKind) ?? i.unit_price;
-        return { ...i, product: p, unit_price: price };
+        return {
+          ...i,
+          product: p,
+          newName: undefined,
+          unit: i.unit || p.unit,
+          unit_price: i.priceTouched && i.unit_price ? i.unit_price : defaultUnitPrice(p, kind),
+          sell_price: buying ? i.sell_price ?? defaultUnitPrice(p, 'sell') : null,
+        };
       }),
     );
     setPickerFor(null);
   };
+  const nameNewItem = (key: string, name: string) => {
+    setItems((prev) => prev.map((i) => (i.key === key ? { ...i, product: null, newName: name } : i)));
+    setPickerFor(null);
+  };
 
   /**
-   * Create every new product this bill introduces, and hand back the rows with those products filled
-   * in. Opening stock stays at zero: the purchase being saved is what puts the stock on the shelf, so
-   * counting it here as well would double it. The selling price is left unset, because the margin is
-   * the shopkeeper's to decide, and Inventory marks such products until they set one.
+   * Create every new product this bill introduces. Opening stock stays at zero: the purchase being
+   * saved is what puts the stock on the shelf, so counting it here as well would double it.
    */
   const createNewProducts = async (rows: ReviewItem[]): Promise<ReviewItem[]> => {
     const out = [...rows];
@@ -188,64 +261,29 @@ export function ReviewForm({
         created = toPicked(
           await api.products.create({
             name,
-            unit: row.unit || 'piece',
-            cost_price: Number(row.unit_price) > 0 ? Number(row.unit_price) : null,
-            sell_price: 0,
+            unit: row.unit.trim() || 'piece',
+            cost_price: Number(row.unit_price) || null,
+            sell_price: Number(row.sell_price) || 0,
             opening_stock: 0,
           }),
         );
       } catch (e) {
-        // Two lines of the same bill can name the same product, and the second create is rejected as
-        // a duplicate. Find the one that already exists rather than failing the whole save.
+        // Two lines of one bill can name the same new product; the second create is a duplicate.
         const existing = (await api.products.list(name)).find(
           (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
         );
         if (!existing) throw e;
         created = toPicked(existing);
       }
-      out[idx] = { ...row, product: created };
+      out[idx] = { ...row, product: created, newName: undefined };
     }
     return out;
-  };
-
-  /**
-   * Before anything is created, ask the shop's own inventory whether these names are already on the
-   * shelf under different wording. The wholesaler writes "Rice (Premium) 25kg", the shop calls it
-   * "Rice", and stocking in must add to the one that exists rather than start a second row for it.
-   */
-  const newNames = useMemo(() => Array.from(new Set(newItems.map(newItemName).filter(Boolean))), [newItems]);
-  const suggestions = useQuery({
-    queryKey: ['product-match', newNames],
-    queryFn: () => api.products.match(newNames),
-    enabled: newNames.length > 0,
-    staleTime: 60_000,
-  });
-  const suggestionFor = (it: ReviewItem): PickedProduct | null => {
-    const name = newItemName(it);
-    const hit = suggestions.data?.find((m) => m.name === name);
-    const best = hit?.candidates[0];
-    return best ? toPicked(best) : null;
-  };
-
-  /**
-   * The products this line could mean, resolved to real catalog rows. The model lists them whenever a
-   * word covers several products the shop stocks ("biscuit", "soap", "oil"), and the shop's own
-   * price for whichever is chosen comes with it.
-   */
-  const choicesFor = (it: ReviewItem): PickedProduct[] => {
-    const codes = (it.original?.alternatives ?? []).map((a) => a.product_id);
-    if (it.product) codes.unshift(it.product.code);
-    const seen = new Set<string>();
-    return codes
-      .filter((c) => !seen.has(c) && seen.add(c))
-      .map((code) => knownProducts.find((p) => p.code === code))
-      .filter((p): p is PickedProduct => !!p);
   };
 
   const save = useMutation({
     mutationFn: async () => {
       let rows = items;
-      if (newItems.length > 0) {
+      if (newCount > 0) {
         rows = await createNewProducts(items);
         setItems(rows);
       }
@@ -255,202 +293,194 @@ export function ReviewForm({
         items: rows.map((i) => ({
           item_index: i.item_index,
           product_code: i.product!.code,
-          qty: Number(i.qty) || 0,
-          unit: i.unit,
-          unit_price: Number(i.unit_price) || 0,
+          qty: Number(i.qty),
+          unit: i.unit.trim() || i.product!.unit,
+          unit_price: Number(i.unit_price),
+          sell_price: buying ? Number(i.sell_price) : null,
           spoken_span: i.original?.spoken_span ?? null,
           llm_product_code: i.original?.product_id ?? null,
           llm_confidence: i.original ? i.original.confidence : null,
         })),
         customer_name: customer.trim() || null,
         payment_mode: payment,
-        notes: notes.trim() || null,
+        notes: null,
         deleted_item_indexes: deleted,
         llm_intent: ext?.intent ?? null,
       };
       return api.transactions.create(body);
     },
-    onSuccess: (t) => onSaved({ id: t.id, total: t.total_amount, type: intent, count: items.length }),
+    onSuccess: (t) => {
+      clearDraft(draftKey);
+      doneCue();
+      onSaved({ id: t.id, total: t.total_amount, type: intent, count: items.length });
+    },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : (e as Error).message),
   });
 
-  const onSaveClick = () => {
-    if (!canSave) return;
-    if (redRows > 0 && !confirmAnyway) {
-      setConfirmAnyway(true);
+  const onSave = () => {
+    if (items.length === 0) {
+      toast.show('Add at least one item first.');
+      return;
+    }
+    if (gapCount > 0) {
+      setShowErrors(true);
+      const first = items[gaps.findIndex((g) => g.length > 0)];
+      document.getElementById(`row-${first.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast.show(`Fill the red boxes first (${gapCount}).`);
       return;
     }
     save.mutate();
   };
 
+  const discard = () => {
+    if (!window.confirm('Delete this whole bill? It will not be saved.')) return;
+    clearDraft(draftKey);
+    nav(backTo, { replace: true });
+  };
+
   const bad = session.status === 'no_speech' || session.status === 'no_text' || session.status === 'failed' ||
     session.status === 'needs_manual';
   const fromPhoto = session.input_kind === 'image';
-  // "Capture again" goes back the way this bill came in, keeping the sale/stock-in mode.
-  const againTo = fromPhoto
-    ? isStockIn ? '/scan?mode=stock_in' : '/scan'
-    : isStockIn ? '/record?mode=stock_in' : '/record';
-  const againLabel = fromPhoto ? 'Photograph again' : 'Record again';
-  const back = backTo ?? { to: againTo, label: fromPhoto ? 'Scan' : 'Speak' };
+  const againTo = `/${SIDE[mode]}/${fromPhoto ? 'photo' : 'voice'}`;
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-56 pt-4">
-      <header className="mb-3 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-primary-dark">{intent === 'purchase' ? 'Review stock in' : 'Review bill'}</h1>
-        <Link to={back.to} className="min-h-[44px] rounded-lg px-2 py-2 text-sm font-medium text-primary">
-          ← {back.label}
-        </Link>
-      </header>
+    <div className="mx-auto w-full max-w-md px-4 pb-72">
+      <TopBar
+        title={buying ? 'Stock in' : 'Sell bill'}
+        subtitle={manual ? 'Typed by hand' : fromPhoto ? 'From your photo' : 'From your voice'}
+        back={backTo}
+        mode={mode}
+      />
 
-      {fromPhoto && (
-        <div className="mb-3 rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary-dark">
-          <p className="flex items-center gap-2 font-semibold">
-            <PhotoIcon className="h-4 w-4" />
-            Read from {session.image_count ?? 1} photo{(session.image_count ?? 1) === 1 ? '' : 's'}
-            {session.ocr_unclear_lines.length > 0 && ` · ${session.ocr_unclear_lines.length} line(s) unclear`}
-          </p>
-          {/* Say plainly where each price came from, because it is the one number the photo does not
-              decide when selling: the shop's margin is the shopkeeper's, not the wholesaler's. */}
-          <p className="mt-0.5 pl-6 font-medium">
-            {intent === 'purchase'
-              ? 'Rates are taken from the photo. Edit any that were misread.'
-              : 'Your selling prices are used, not any number on the paper.'}
-          </p>
+      {restored && editable && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-white">
+          <p className="text-sm font-semibold">Your unsaved bill is back, as you left it.</p>
+          <button type="button" onClick={discard} className="min-h-[40px] shrink-0 rounded-lg bg-white/15 px-3 text-sm font-bold">
+            Start over
+          </button>
         </div>
       )}
 
       {session.status === 'processing' && (
-        <div className="mb-3 rounded-xl bg-slate-100 p-3 text-sm text-slate-700">Still processing… refreshing.</div>
+        <div className="mb-3 flex items-center gap-3 rounded-2xl bg-slate-100 p-4 text-slate-700">
+          <span className="h-6 w-6 animate-spin rounded-full border-4 border-slate-300 border-t-slate-700" />
+          <span className="font-semibold">Still reading… one moment.</span>
+        </div>
       )}
       {session.status === 'saved' && (
-        <div className="mb-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">This session was already saved. Saving again will create another bill.</div>
+        <div className="mb-3 rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-800">
+          This bill is already saved. Saving again would make a second bill.
+        </div>
       )}
       {bad && (
-        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          <p className="font-semibold">
-            {session.status === 'no_speech' && 'No speech detected'}
-            {session.status === 'no_text' && 'No list found in the photo'}
-            {session.status === 'failed' && (fromPhoto ? 'Could not read the photo' : 'Processing failed')}
-            {session.status === 'needs_manual' && 'Could not understand. Please fill in manually.'}
+        <div className="mb-3 rounded-2xl border-2 border-red-200 bg-red-50 p-4 text-red-800">
+          <p className="text-lg font-bold">
+            {session.status === 'no_speech' && 'We could not hear anything'}
+            {session.status === 'no_text' && 'No list in the photo'}
+            {session.status === 'failed' && (fromPhoto ? 'Could not read the photo' : 'Could not understand that')}
+            {session.status === 'needs_manual' && 'Please fill this one in by hand'}
           </p>
-          {session.status === 'no_text' && (
-            <p className="mt-1 text-xs">
-              Hold the phone straight over the paper, fill the frame with it, and keep your shadow off the page.
-            </p>
-          )}
-          {session.error && <p className="mt-1 break-words text-xs">{session.error}</p>}
-          <Link to={againTo} className="mt-2 flex min-h-[44px] items-center justify-center rounded-lg bg-primary font-semibold text-white">
-            {againLabel}
-          </Link>
-        </div>
-      )}
-      {session.low_language_confidence && (
-        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Language detection was unsure ({session.transcript_language ?? '?'}
-          {typeof session.language_probability === 'number' ? ` · ${Math.round(session.language_probability * 100)}%` : ''}). Check the transcript carefully.
-        </div>
-      )}
-
-      <TranscriptPanel
-        title={fromPhoto ? 'What the photo said' : 'Transcript'}
-        transcript={session.transcript}
-        lines={fromPhoto ? session.ocr_lines : undefined}
-        unclearLines={session.ocr_unclear_lines}
-        columns={fromPhoto ? session.ocr_columns : []}
-        notes={fromPhoto ? session.ocr_notes : ''}
-        language={session.transcript_language}
-        languageProbability={session.language_probability}
-        highlightSpan={activeItem?.original?.spoken_span ?? null}
-      />
-
-      <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-        {(['sale', 'purchase'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setIntent(t)}
-            className={cx('min-h-[44px] rounded-lg text-sm font-semibold', intent === t ? 'bg-white text-primary shadow' : 'text-slate-600')}
-          >
-            {t === 'sale' ? 'Sale' : 'Purchase'}
-          </button>
-        ))}
-      </div>
-      {intentHint && (
-        <p className="mt-1 text-xs text-amber-700">
-          {fromPhoto ? 'Read' : 'Heard'} as “{ext?.intent}” — defaulted to Sale. Change if this is a purchase.
-        </p>
-      )}
-
-      {newItems.length > 0 && (
-        <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-primary-dark">
-          <p className="font-semibold">
-            {newItems.length} item{newItems.length === 1 ? '' : 's'} not in your inventory yet
+          <p className="mt-1 text-sm">
+            {session.status === 'no_text'
+              ? 'Hold the phone straight over the paper, fill the frame with it, and keep your shadow off it.'
+              : session.status === 'no_speech'
+                ? 'Hold the phone a little closer and speak after the beep.'
+                : session.error ?? ''}
           </p>
-          <p className="mt-0.5 text-xs">
-            Saving adds {newItems.length === 1 ? 'it' : 'them'} with this bill's rate as the cost price and the
-            stock from this bill. Set your selling prices afterwards in Inventory.
-          </p>
-          {newItems.some((i) => suggestionFor(i)) && (
-            <p className="mt-1 text-xs font-semibold">
-              Some look like products you already stock. Check the suggestions below before saving, so stock
-              is added to the item you already have.
-            </p>
+          {session.status !== 'needs_manual' && (
+            <Link to={againTo} className={cx('mt-3 flex min-h-[52px] items-center justify-center rounded-xl font-bold', theme.solid)}>
+              {fromPhoto ? 'Take the photo again' : 'Speak again'}
+            </Link>
           )}
         </div>
       )}
 
-      <ul className="mt-3 space-y-2">
-        {items.map((it) => (
-          <ItemRow
-            key={it.key}
-            item={it}
-            active={it.key === activeKey}
-            onActivate={() => setActiveKey(it.key)}
-            onChange={(n) => updateItem(it.key, n)}
-            onDelete={() => deleteItem(it)}
-            onPickProduct={() => setPickerFor(it.key)}
-            priceKind={priceKind}
-            source={fromPhoto ? 'image' : 'voice'}
-            newItemOk={newKeys.has(it.key)}
-            choices={choicesFor(it)}
-            onChoose={(p) => selectProduct(it.key, p)}
-            suggestion={newKeys.has(it.key) ? suggestionFor(it) : null}
-            onUseSuggestion={() => {
-              const p = suggestionFor(it);
-              if (p) selectProduct(it.key, p);
-            }}
+      {editable && items.length > 0 && (
+        <div className={cx('mb-3 rounded-2xl border-2 p-4', gapCount > 0 ? 'border-amber-200 bg-amber-50' : cx(theme.softBorder, theme.soft))}>
+          <p className={cx('text-lg font-extrabold', gapCount > 0 ? 'text-amber-900' : theme.textDark)}>
+            {manual ? `${items.length} item${items.length === 1 ? '' : 's'}` : `We found ${items.length} item${items.length === 1 ? '' : 's'}`}
+          </p>
+          <p className={cx('text-sm', gapCount > 0 ? 'text-amber-800' : theme.text)}>
+            {gapCount > 0
+              ? `Fill the ${showErrors ? 'red' : 'yellow'} boxes: ${gapKinds.map((k) => (buying && k === 'price' ? 'cost price' : MISSING_WORDS[k])).join(', ')}.`
+              : 'Everything is filled in. Check and press Save.'}
+            {buying && newCount > 0 && ` ${newCount} new item${newCount === 1 ? '' : 's'} will be added to your stock.`}
+          </p>
+        </div>
+      )}
+
+      {!manual && (session.transcript || session.ocr_lines.length > 0) && (
+        <div className="mb-3">
+          <TranscriptPanel
+            title={fromPhoto ? 'What the photo said' : 'What we heard'}
+            transcript={session.transcript}
+            lines={fromPhoto ? session.ocr_lines : undefined}
+            unclearLines={session.ocr_unclear_lines}
+            columns={fromPhoto ? session.ocr_columns : []}
+            notes={fromPhoto ? session.ocr_notes : ''}
+            language={null}
+            highlightSpan={activeItem?.original?.spoken_span ?? null}
+            defaultOpen={false}
           />
-        ))}
-      </ul>
-      {items.length === 0 && <p className="mt-3 rounded-xl bg-slate-100 p-3 text-center text-sm text-slate-600">No items. Add one below.</p>}
-      <button type="button" onClick={addItem} className="mt-3 min-h-[48px] w-full rounded-xl border-2 border-dashed border-primary/50 font-semibold text-primary">
-        + Add item
-      </button>
+        </div>
+      )}
+
+      {editable && (
+        <>
+          <ul ref={listRef} className="space-y-3">
+            {items.map((it, idx) => (
+              <div key={it.key} id={`row-${it.key}`}>
+                <ItemRow
+                  item={it}
+                  index={idx}
+                  intent={intent}
+                  active={it.key === activeKey}
+                  onActivate={() => setActiveKey(it.key)}
+                  onChange={(n) => updateItem(it.key, n)}
+                  onDelete={() => deleteItem(it)}
+                  onPickProduct={() => setPickerFor(it.key)}
+                  source={manual ? 'manual' : fromPhoto ? 'image' : 'voice'}
+                  newItemOk={newKeys.has(it.key)}
+                  suggestion={newKeys.has(it.key) ? suggestionFor(it) : null}
+                  onUseSuggestion={() => {
+                    const p = suggestionFor(it);
+                    if (p) selectProduct(it.key, p);
+                  }}
+                  choices={choicesFor(it)}
+                  onChoose={(p) => selectProduct(it.key, p)}
+                  showErrors={showErrors}
+                />
+              </div>
+            ))}
+          </ul>
+
+          <button
+            type="button"
+            onClick={addItem}
+            className={cx(
+              'mt-3 flex min-h-[64px] w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed text-lg font-bold',
+              theme.softBorder, theme.text,
+            )}
+          >
+            <PlusIcon className="h-6 w-6" /> Add an item
+          </button>
+
+          <button type="button" onClick={discard} className="mt-4 min-h-[48px] w-full text-sm font-semibold text-red-600">
+            Delete this bill
+          </button>
+        </>
+      )}
 
       {debug && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs">
           <p className="mb-1 font-semibold text-slate-600">Debug</p>
-          <p className="text-slate-500">session {session.session_id} · client {session.client_session_id} · {session.status}</p>
+          <p className="text-slate-500">session {session.session_id || '(manual)'} · {session.status} · draft {draftKey}</p>
           {Object.keys(session.latencies).length > 0 && (
-            <div className="mt-2">
-              <p className="font-semibold text-slate-600">Latencies (ms)</p>
-              <ul className="grid grid-cols-2 gap-x-3">
-                {Object.entries(session.latencies).map(([k, v]) => (
-                  <li key={k} className="flex justify-between"><span className="text-slate-500">{k}</span><span className="font-mono">{Math.round(Number(v))}</span></li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {Object.keys(session.secondary_views).length > 0 && (
-            <div className="mt-2">
-              <p className="font-semibold text-slate-600">Secondary views</p>
-              {Object.entries(session.secondary_views).map(([k, v]) => (
-                <div key={k} className="mt-1">
-                  <span className="rounded bg-slate-100 px-1 font-medium">{k}</span>
-                  <p className="whitespace-pre-wrap break-words text-slate-700">{v}</p>
-                </div>
+            <ul className="mt-2 grid grid-cols-2 gap-x-3">
+              {Object.entries(session.latencies).map(([k, v]) => (
+                <li key={k} className="flex justify-between"><span className="text-slate-500">{k}</span><span className="font-mono">{Math.round(Number(v))}</span></li>
               ))}
-            </div>
+            </ul>
           )}
           {ext && (
             <details className="mt-2">
@@ -461,98 +491,66 @@ export function ReviewForm({
         </section>
       )}
 
-      {/* Footer */}
-      <div className="fixed inset-x-0 bottom-[60px] z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-md px-4 py-2">
-          <div className="flex gap-2">
-            <input
-              value={customer}
-              onChange={(e) => setCustomer(e.target.value)}
-              placeholder={intent === 'purchase' ? 'Supplier name (optional)' : 'Customer name (optional)'}
-              aria-label={intent === 'purchase' ? 'Supplier name (optional)' : 'Customer name (optional)'}
-              className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm focus:border-primary focus:outline-none"
-            />
-            <div className="flex gap-1">
-              {(['cash', 'upi', 'credit'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setPayment(m)}
-                  className={cx(
-                    'min-h-[44px] rounded-lg border px-2.5 text-xs font-semibold uppercase',
-                    payment === m ? 'border-primary bg-primary text-white' : 'border-slate-300 bg-white text-slate-600',
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
-          {debug && (
-            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="mt-2 min-h-[40px] w-full rounded-lg border border-slate-300 px-3 text-sm" />
-          )}
-          <div className="mt-2 flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                {intent === 'purchase' ? 'Total cost' : 'Total'} · {items.length} item{items.length === 1 ? '' : 's'}
-              </div>
-              <div className="text-2xl font-bold text-slate-900">{fmtMoney(total)}</div>
-            </div>
-            {confirmAnyway ? (
+      {/* ---- the save bar, always within reach ---- */}
+      {editable && (
+        <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/95 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur">
+          <div className="mx-auto w-full max-w-md px-4 py-2.5">
+            <div className="flex gap-2">
+              <input
+                value={customer}
+                onChange={(e) => setCustomer(e.target.value)}
+                placeholder={buying ? 'Wholesaler name (optional)' : 'Customer name (optional)'}
+                className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
               <div className="flex gap-1">
-                <button type="button" onClick={() => setConfirmAnyway(false)} className="min-h-[52px] rounded-xl border border-slate-300 px-3 text-sm font-medium">Back</button>
-                <button
-                  type="button"
-                  onClick={() => save.mutate()}
-                  disabled={save.isPending}
-                  className="min-h-[52px] rounded-xl bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {save.isPending ? 'Saving…' : `Save anyway (${redRows} red)`}
-                </button>
+                {PAYMENT.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setPayment(m.value)}
+                    className={cx(
+                      'min-h-[44px] rounded-xl border px-2.5 text-xs font-bold',
+                      payment === m.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-600',
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
-            ) : (
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  {buying ? 'Total cost' : 'Total'} · {items.length} item{items.length === 1 ? '' : 's'}
+                </div>
+                <div className="text-3xl font-extrabold tabular-nums text-slate-900">{fmtMoney(total)}</div>
+              </div>
               <button
                 type="button"
-                onClick={onSaveClick}
-                disabled={!canSave || save.isPending}
-                title={missingProduct ? 'Pick a product for every row' : undefined}
-                className="min-h-[52px] rounded-xl bg-primary px-6 text-base font-semibold text-white disabled:bg-slate-300"
+                onClick={onSave}
+                disabled={save.isPending}
+                className={cx(
+                  'min-h-[60px] min-w-[136px] rounded-2xl px-6 text-xl font-extrabold shadow-lg disabled:opacity-60',
+                  gapCount > 0 ? 'bg-slate-300 text-slate-700' : cx(theme.solid, theme.solidActive),
+                )}
               >
-                {save.isPending
-                  ? newItems.length > 0 ? 'Adding items…' : 'Saving…'
-                  : newItems.length > 0 ? `Add ${newItems.length} new & save` : 'Save'}
+                {save.isPending ? 'Saving…' : buying && newCount > 0 ? 'Save & add' : 'Save'}
               </button>
-            )}
+            </div>
           </div>
-          {missingProduct && (
-            <p className="mt-1 text-[11px] text-red-600">
-              {isPurchase
-                ? 'A row with no name needs a product picked before saving.'
-                : 'Every row needs a product before saving. Selling needs an item that is already in stock.'}
-            </p>
-          )}
         </div>
-      </div>
+      )}
 
       <ProductPicker
         open={!!pickerItem}
         onClose={() => setPickerFor(null)}
         onSelect={(p) => pickerItem && selectProduct(pickerItem.key, p)}
+        onNewName={buying ? (name) => pickerItem && nameNewItem(pickerItem.key, name) : undefined}
         alternatives={pickerItem?.original?.alternatives ?? []}
         knownProducts={knownProducts}
         currentCode={pickerItem?.product?.code ?? null}
-        initialQuery={pickerItem && !pickerItem.product ? pickerItem.original?.product_name_guess ?? '' : ''}
+        initialQuery={pickerItem && !pickerItem.product ? newItemName(pickerItem) : ''}
       />
     </div>
-  );
-}
-
-function PhotoIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <circle cx="8.5" cy="9" r="1.5" />
-      <path d="M21 16l-5-5-4.5 5-2-2L3 19" />
-    </svg>
   );
 }

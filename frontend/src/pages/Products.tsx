@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import TopBar from '../components/TopBar';
 import { api, ApiError } from '../lib/api';
 import { COMMON_UNITS, LOCAL_NAME_HELP, LOCAL_NAME_PLACEHOLDER, STOCK_ADJUST_REASONS, movementReasonLabel } from '../lib/constants';
 import { round2 } from '../lib/reviewModel';
@@ -22,20 +23,34 @@ function LowBadge() {
   return <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800">Low stock</span>;
 }
 
-/** A product added by a stock-in has a cost but no selling price yet: the margin is the shop's to set.
- *  Without this badge it would sit in the list at zero and could be sold for nothing. */
-function NoPriceBadge() {
-  return <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-red-800">Set price</span>;
+
+type Filter = 'all' | 'low' | 'noprice';
+type SortKey = 'name' | 'qty' | 'margin';
+
+function marginOf(p: ProductOut): { amount: number; pct: number } | null {
+  if (!(p.sell_price > 0) || p.cost_price === null || !(p.cost_price > 0)) return null;
+  return { amount: round2(p.sell_price - p.cost_price), pct: ((p.sell_price - p.cost_price) / p.cost_price) * 100 };
 }
 
+/**
+ * My stock, as a table: product, quantity, unit, selling price, cost price, margin.
+ *
+ * A table because that is what a stock register looks like on paper, and every shopkeeper has kept
+ * one. The product column stays put while the numbers scroll on a narrow phone, a missing price shows
+ * as a red "Set" in its own cell rather than as a zero, and tapping any row opens that product with its
+ * prices first.
+ */
 export default function Products() {
+  const [params] = useSearchParams();
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [lowOnly, setLowOnly] = useState(false);
+  const [filter, setFilter] = useState<Filter>(params.get('filter') === 'low' ? 'low' : 'all');
+  const [sort, setSort] = useState<SortKey>('name');
   const [editing, setEditing] = useState<ProductOut | null>(null);
   const [adding, setAdding] = useState(false);
   const qc = useQueryClient();
   const toast = useToast();
+  const fromBuy = params.get('from') === 'buy';
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebounced(q.trim()), 250);
@@ -43,105 +58,193 @@ export default function Products() {
   }, [q]);
 
   const products = useQuery({
-    queryKey: ['products', debounced, lowOnly],
-    queryFn: () => api.products.list(debounced || undefined, lowOnly),
+    queryKey: ['products', debounced],
+    queryFn: () => api.products.list(debounced || undefined),
   });
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ['products'] });
+    void qc.invalidateQueries({ queryKey: ['analytics'] });
+  };
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ['products'] });
+  const all = (products.data ?? []).filter((p) => p.is_active);
+  const lowCount = all.filter(isLow).length;
+  const noPriceCount = all.filter((p) => !(p.sell_price > 0) || p.cost_price === null || !(p.cost_price > 0)).length;
+  const shown = all
+    .filter((p) => (filter === 'low' ? isLow(p) : filter === 'noprice' ? !(p.sell_price > 0) || !(Number(p.cost_price) > 0) : true))
+    .sort((a, b) => {
+      if (sort === 'qty') return a.stock_qty - b.stock_qty;
+      if (sort === 'margin') return (marginOf(b)?.pct ?? -1e9) - (marginOf(a)?.pct ?? -1e9);
+      return a.name.localeCompare(b.name);
+    });
+  const atCost = all.reduce((s, p) => s + Math.max(0, p.stock_qty) * (Number(p.cost_price) || 0), 0);
+  const atSell = all.reduce((s, p) => s + Math.max(0, p.stock_qty) * (p.sell_price || 0), 0);
+  const empty = !!products.data && all.length === 0 && !debounced;
 
-  const noProductsAtAll = !!products.data && products.data.length === 0 && !debounced && !lowOnly;
+  const th = (key: SortKey | null, label: string, cls = '') => (
+    <th className={cx('px-1 py-2.5 text-left text-[10px] font-extrabold uppercase tracking-wide text-slate-500', cls)}>
+      {key ? (
+        <button type="button" onClick={() => setSort(key)} className={cx('uppercase', sort === key && 'text-slate-900 underline')}>
+          {label}
+        </button>
+      ) : label}
+    </th>
+  );
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-6 pt-4">
-      {/* Exactly two ways to add stock, always here whether the list is empty or not. */}
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h1 className="text-lg font-bold text-primary-dark">Inventory</h1>
-        <div className="flex gap-2">
-          <Link to="/record?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
-            By voice
-          </Link>
-          <Link to="/scan?mode=stock_in" className="flex min-h-[44px] items-center rounded-lg border border-primary bg-white px-3 text-sm font-semibold text-primary">
-            By photo
-          </Link>
-          <button type="button" onClick={() => setAdding(true)} className="min-h-[44px] rounded-lg bg-primary px-3 text-sm font-semibold text-white">
-            + Add product
-          </button>
+    <div className="mx-auto w-full max-w-2xl px-4 pb-28">
+      <TopBar title="My stock" subtitle={`${all.length} item${all.length === 1 ? '' : 's'}`} back={fromBuy ? '/buy' : '/'} />
+
+      {!empty && (
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-white p-3 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Stock worth</p>
+            <p className="text-2xl font-extrabold tabular-nums text-slate-900">{fmtMoney(round2(atCost))}</p>
+            <p className="text-xs text-slate-500">at what you paid</p>
+          </div>
+          <div className="rounded-2xl bg-white p-3 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Will sell for</p>
+            <p className="text-2xl font-extrabold tabular-nums text-emerald-700">{fmtMoney(round2(atSell))}</p>
+            <p className="text-xs text-slate-500">at your prices</p>
+          </div>
         </div>
+      )}
+
+      <div className="mb-2 flex gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search your stock"
+          inputMode="search"
+          className="min-h-[52px] min-w-0 flex-1 rounded-2xl border-2 border-slate-200 bg-white px-4 text-lg focus:border-slate-400 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="min-h-[52px] shrink-0 rounded-2xl bg-blue-600 px-4 text-base font-extrabold text-white active:bg-blue-700"
+        >
+          + New
+        </button>
       </div>
 
-      {!noProductsAtAll && (
-        <div className="mb-3 flex gap-2">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products" inputMode="search" className={cx(field, 'flex-1')} />
+      <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+        {([
+          ['all', `All · ${all.length}`],
+          ['low', `Low · ${lowCount}`],
+          ['noprice', `No price · ${noPriceCount}`],
+        ] as [Filter, string][]).map(([f, label]) => (
           <button
+            key={f}
             type="button"
-            onClick={() => setLowOnly((v) => !v)}
-            aria-pressed={lowOnly}
-            className={cx('min-h-[44px] whitespace-nowrap rounded-lg border px-3 text-xs font-semibold', lowOnly ? 'border-amber-500 bg-amber-100 text-amber-800' : 'border-slate-300 bg-white text-slate-600')}
+            onClick={() => setFilter(f)}
+            className={cx(
+              'min-h-[44px] shrink-0 rounded-full border-2 px-4 text-sm font-bold',
+              filter === f
+                ? f === 'low' ? 'border-amber-500 bg-amber-500 text-white' : f === 'noprice' ? 'border-red-600 bg-red-600 text-white' : 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 bg-white text-slate-600',
+            )}
           >
-            Low stock
+            {label}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
 
       {adding && (
-        <div className="mb-3">
-          <AddProductInline
-            initialName={q}
-            onCancel={() => setAdding(false)}
-            onCreated={() => {
-              setAdding(false);
-              toast.success('Product added');
-              invalidate();
-            }}
-          />
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setAdding(false)}>
+          <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-4 pb-[max(env(safe-area-inset-bottom),16px)]" onClick={(e) => e.stopPropagation()}>
+            <AddProductInline
+              initialName={q}
+              onCancel={() => setAdding(false)}
+              onCreated={() => {
+                setAdding(false);
+                toast.success('Item added to your stock');
+                invalidate();
+              }}
+            />
+          </div>
         </div>
       )}
 
-      {products.isLoading && <p className="py-6 text-center text-sm text-slate-500">Loading…</p>}
-      {products.isError && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{(products.error as Error).message}</p>}
+      {products.isLoading && <p className="py-8 text-center text-slate-500">Loading your stock…</p>}
+      {products.isError && <p className="rounded-2xl bg-red-50 p-4 font-semibold text-red-800">{(products.error as Error).message}</p>}
 
-      {noProductsAtAll && !adding && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-          <p className="font-semibold text-slate-800">Your inventory is empty</p>
-          <p className="mt-1 text-sm text-slate-500">Add a product, or add by voice, above.</p>
+      {empty && (
+        <section className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-6 text-center">
+          <p className="text-xl font-extrabold text-slate-800">Your stock is empty</p>
+          <p className="mt-1 text-slate-500">Add what you have — speak it, photograph the bill, or type it.</p>
+          <Link to="/buy" className="mt-4 inline-flex min-h-[56px] items-center rounded-2xl bg-blue-600 px-6 text-lg font-extrabold text-white">
+            Add stock
+          </Link>
         </section>
       )}
-      {products.data && products.data.length === 0 && !noProductsAtAll && (
-        <p className="rounded-xl bg-slate-100 p-4 text-center text-sm text-slate-600">{lowOnly ? 'Nothing is low on stock.' : 'No products match your search.'}</p>
+
+      {!empty && products.data && shown.length === 0 && (
+        <p className="rounded-2xl bg-slate-100 p-4 text-center font-semibold text-slate-600">
+          {filter === 'low' ? 'Nothing is running low. 👍' : filter === 'noprice' ? 'Every item has both prices. 👍' : 'Nothing matches that search.'}
+        </p>
       )}
 
-      <ul className="space-y-2">
-        {products.data?.map((p) => {
-          const low = isLow(p);
-          return (
-            <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => setEditing(p)}
-                className={cx('flex min-h-[64px] w-full items-center gap-3 rounded-xl border bg-white px-3 py-2 text-left', !p.is_active && 'opacity-50', low ? 'border-amber-300' : 'border-slate-200')}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold">{p.name}</div>
-                  {p.local_name && <div className="truncate text-sm text-slate-500">{p.local_name}</div>}
-                  <div className="truncate text-xs text-slate-500">
-                    {p.brand ? p.brand + ' · ' : ''}
-                    {p.code} · {fmtMoney(p.sell_price)}/{p.unit}
-                  </div>
-                </div>
-                <div className="max-w-[45%] shrink-0 text-right">
-                  <div className={cx('text-sm font-bold leading-tight', low ? 'text-amber-700' : 'text-slate-800')}>{formatStock(p.stock_qty, p.unit)}</div>
-                  {(low || p.sell_price <= 0) && (
-                    <div className="mt-1 flex flex-wrap justify-end gap-1">
-                      {p.sell_price <= 0 && <NoPriceBadge />}
-                      {low && <LowBadge />}
-                    </div>
-                  )}
-                </div>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {shown.length > 0 && (
+        <div className="overflow-x-auto rounded-2xl border-2 border-slate-100 bg-white shadow-sm">
+          <table className="w-full table-fixed border-collapse">
+            <colgroup>
+              <col className="w-[29%]" />
+              <col className="w-[12%]" />
+              <col className="w-[17%]" />
+              <col className="w-[13%]" />
+              <col className="w-[13%]" />
+              <col className="w-[16%]" />
+            </colgroup>
+            <thead className="bg-slate-50">
+              <tr>
+                {th('name', 'Item', 'pl-3')}
+                {th('qty', 'Qty', 'text-right')}
+                {th(null, 'Unit', 'pl-2')}
+                {th(null, 'Sell', 'text-right')}
+                {th(null, 'Cost', 'text-right')}
+                {th('margin', 'Margin', 'pr-3 text-right')}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((p) => {
+                const low = isLow(p);
+                const m = marginOf(p);
+                return (
+                  <tr key={p.id} onClick={() => setEditing(p)} className="cursor-pointer border-t border-slate-100 active:bg-slate-50">
+                    <td className="py-2.5 pl-3 pr-1">
+                      <span className="line-clamp-2 break-words text-[15px] font-bold leading-snug text-slate-900">{p.name}</span>
+                      {p.local_name && <span className="block truncate text-xs text-slate-500">{p.local_name}</span>}
+                    </td>
+                    <td className={cx('px-1 text-right text-[15px] font-extrabold tabular-nums', low ? 'text-amber-600' : 'text-slate-900')}>
+                      {Number(p.stock_qty.toFixed(3))}
+                      {low && <span className="block text-[10px] font-bold uppercase">low</span>}
+                    </td>
+                    <td className="truncate pl-2 pr-1 text-xs text-slate-600">{p.unit}</td>
+                    <td className="px-1 text-right text-[15px] font-semibold tabular-nums">
+                      {p.sell_price > 0 ? p.sell_price : <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-extrabold text-red-700">Set</span>}
+                    </td>
+                    <td className="px-1 text-right text-[15px] tabular-nums text-slate-600">
+                      {Number(p.cost_price) > 0 ? p.cost_price : <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-extrabold text-red-700">Set</span>}
+                    </td>
+                    <td className="py-2.5 pl-1 pr-3 text-right tabular-nums">
+                      {m ? (
+                        <>
+                          <span className={cx('block text-[15px] font-extrabold', m.amount >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                            {m.amount >= 0 ? '' : '−'}₹{Math.abs(m.amount)}
+                          </span>
+                          <span className={cx('block text-xs font-semibold', m.amount >= 0 ? 'text-emerald-600' : 'text-red-500')}>{m.pct.toFixed(0)}%</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {shown.length > 0 && <p className="mt-2 text-center text-xs text-slate-400">Tap any item to change its price or stock.</p>}
 
       {editing && (
         <EditProductSheet
@@ -259,6 +362,9 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
   const margin = cost === null || cost <= 0 || sell <= 0
     ? null
     : { amount: round2(sell - cost), percent: cost > 0 ? ((sell - cost) / cost) * 100 : null };
+  // Both prices or neither: a selling price with no cost hides the margin, and a cost with no selling
+  // price lets the item be billed at zero.
+  const pricesOk = sell > 0 && cost !== null && cost > 0;
   const pricesChanged =
     sell !== Number(product.sell_price) || numOrNull(form.cost_price) !== (product.cost_price ?? null);
 
@@ -317,11 +423,12 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
               <label className="text-xs font-medium text-slate-700">
                 Selling price ₹
                 <input
-                  className={bigField}
+                  className={cx(bigField, !(sell > 0) && '!border-2 !border-red-500 !bg-red-50')}
                   type="number"
                   inputMode="decimal"
                   min={0}
                   step="any"
+                  placeholder="Required"
                   value={form.sell_price}
                   onChange={(e) => setForm({ ...form, sell_price: e.target.value })}
                 />
@@ -329,12 +436,12 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
               <label className="text-xs text-slate-600">
                 Cost price ₹
                 <input
-                  className={bigField}
+                  className={cx(bigField, !(cost !== null && cost > 0) && '!border-2 !border-red-500 !bg-red-50')}
                   type="number"
                   inputMode="decimal"
                   min={0}
                   step="any"
-                  placeholder="Optional"
+                  placeholder="Required"
                   value={form.cost_price}
                   onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
                 />
@@ -343,7 +450,7 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
 
             <p className="mt-1.5 min-h-[18px] text-xs">
               {margin === null ? (
-                <span className="text-slate-500">Add a cost price to see your margin.</span>
+                <span className="font-semibold text-red-600">Both prices are needed to save.</span>
               ) : (
                 <span className={margin.amount >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-red-700'}>
                   Margin {fmtMoney(margin.amount)} per {product.unit}
@@ -354,10 +461,10 @@ function EditProductSheet({ product, onClose, onChanged }: { product: ProductOut
 
             <button
               type="submit"
-              disabled={savePrices.isPending || !pricesChanged}
+              disabled={savePrices.isPending || !pricesChanged || !pricesOk}
               className="mt-2 min-h-[50px] w-full rounded-xl bg-primary text-base font-bold text-white disabled:bg-slate-300"
             >
-              {savePrices.isPending ? 'Saving…' : pricesChanged ? 'Set price' : 'Price saved'}
+              {savePrices.isPending ? 'Saving…' : !pricesOk ? 'Fill both prices' : pricesChanged ? 'Set price' : 'Price saved'}
             </button>
           </form>
 

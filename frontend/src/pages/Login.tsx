@@ -8,6 +8,14 @@ import { cx } from '../lib/utils';
 export const fieldClass =
   'min-h-[52px] w-full rounded-xl border border-slate-300 bg-white px-3.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25';
 export const labelClass = 'mb-1.5 block text-sm font-medium text-slate-700';
+/**
+ * A box with something wrong in it: red border, red tint, so it is found without reading a word.
+ *
+ * Marked important because the normal box already sets a grey border and a white background, and in
+ * the generated stylesheet those come later and win. Without the `!` the red only showed while the box
+ * had focus, which is exactly when the shopkeeper is not looking for it.
+ */
+export const invalidClass = '!border-2 !border-red-500 !bg-red-50 focus:!border-red-500 focus:ring-red-200';
 
 export function Brand({ tagline }: { tagline: string }) {
   return (
@@ -20,7 +28,7 @@ export function Brand({ tagline }: { tagline: string }) {
 }
 
 export function PasswordField({
-  id, value, onChange, placeholder, autoComplete, label,
+  id, value, onChange, placeholder, autoComplete, label, invalid = false,
 }: {
   id: string;
   value: string;
@@ -28,6 +36,7 @@ export function PasswordField({
   placeholder?: string;
   autoComplete: string;
   label: string;
+  invalid?: boolean;
 }) {
   const [shown, setShown] = useState(false);
   return (
@@ -36,7 +45,7 @@ export function PasswordField({
       <div className="relative">
         <input
           id={id}
-          className={cx(fieldClass, 'pr-16')}
+          className={cx(fieldClass, 'pr-16', invalid && invalidClass)}
           type={shown ? 'text' : 'password'}
           value={value}
           autoComplete={autoComplete}

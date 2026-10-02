@@ -15,9 +15,14 @@ export interface PickedProduct {
 
 /** Which base price a line defaults to: selling price for sales, cost price for purchases. */
 export type PriceKind = 'sell' | 'cost';
+export type Intent = 'sale' | 'purchase';
 
-export function priceKindFor(type: 'sale' | 'purchase'): PriceKind {
+export function priceKindFor(type: Intent): PriceKind {
   return type === 'purchase' ? 'cost' : 'sell';
+}
+
+export function intentFor(mode: VoiceMode): Intent {
+  return mode === 'stock_in' ? 'purchase' : 'sale';
 }
 
 export function toPicked(p: ProductOut | ReviewProduct): PickedProduct {
@@ -34,22 +39,36 @@ export function toPicked(p: ProductOut | ReviewProduct): PickedProduct {
   };
 }
 
+/**
+ * One line of a bill while it is being checked.
+ *
+ * Every number is nullable on purpose. "Basmati, marigold biscuit, tiger biscuit" is a complete and
+ * perfectly good thing for a shopkeeper to say; it produces three lines with the quantities empty, and
+ * an empty box is honest where a pre-filled 1 would look like something they said. Saving is what
+ * insists the boxes are filled, not capturing.
+ */
 export interface ReviewItem {
   key: string;
   item_index: number | null;
   product: PickedProduct | null;
-  qty: number;
+  /** The name typed for a product that is not in the inventory yet (buying only). */
+  newName?: string;
+  qty: number | null;
   unit: string;
-  unit_price: number;
-  /** true once the user has typed a price, so re-picking a product/unit won't overwrite it */
+  /** Selling: the price this customer pays. Buying: the wholesaler's rate, i.e. the cost. */
+  unit_price: number | null;
+  /** Buying only: what the shop will now sell this product at. Required to save a purchase. */
+  sell_price: number | null;
+  /** true once the user has typed a price, so re-picking a product won't overwrite it */
   priceTouched: boolean;
   original: ExtractedItem | null;
 }
 
-/** Default unit price: sell_price, or for kind "cost" the cost_price when set (> 0), else sell_price. */
+/** The shop's own saved price for a product, or null when it has not set one. Never a substitute. */
 export function defaultUnitPrice(product: PickedProduct | null, kind: PriceKind = 'sell'): number | null {
   if (!product) return null;
-  return kind === 'cost' && product.cost_price !== null && product.cost_price > 0 ? product.cost_price : product.sell_price;
+  if (kind === 'cost') return product.cost_price !== null && product.cost_price > 0 ? product.cost_price : null;
+  return product.sell_price > 0 ? product.sell_price : null;
 }
 
 export function round2(n: number): number {
@@ -81,28 +100,62 @@ export function buildReviewItems(session: VoiceSessionOut, kind: PriceKind = 'se
   const takePrice = usesCapturedPrice(session, kind);
   return items.map((it, idx) => {
     const product = it.product_id ? byCode.get(it.product_id) ?? null : null;
-    const unit = it.unit || product?.unit || 'piece';
-    const llmPrice = takePrice && it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
-    const price = llmPrice ?? defaultUnitPrice(product, kind) ?? 0;
+    const captured = takePrice && it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
     return {
       key: nextKey(),
       item_index: idx,
       product,
-      qty: it.quantity > 0 ? it.quantity : 1,
-      unit,
-      unit_price: price,
-      priceTouched: llmPrice !== null,
+      newName: product ? undefined : (it.product_name_guess || '').trim() || undefined,
+      qty: it.quantity !== null && it.quantity > 0 ? it.quantity : null,
+      // What was said, else the product's own unit, else nothing. Never "piece" out of thin air.
+      unit: it.unit || product?.unit || '',
+      unit_price: captured ?? defaultUnitPrice(product, kind),
+      sell_price: kind === 'cost' ? defaultUnitPrice(product, 'sell') : null,
+      priceTouched: captured !== null,
       original: it,
     };
   });
 }
 
 export function newBlankItem(): ReviewItem {
-  return { key: nextKey(), item_index: null, product: null, qty: 1, unit: 'piece', unit_price: 0, priceTouched: false, original: null };
+  return {
+    key: nextKey(), item_index: null, product: null, qty: null, unit: '', unit_price: null, sell_price: null,
+    priceTouched: false, original: null,
+  };
 }
 
 export function lineTotal(it: ReviewItem): number {
   return round2((Number(it.qty) || 0) * (Number(it.unit_price) || 0));
+}
+
+/** The name a not-yet-known line would be created under, or "" when there is nothing to go on. */
+export function newItemName(it: ReviewItem): string {
+  return (it.newName ?? it.original?.product_name_guess ?? '').trim();
+}
+
+export type Missing = 'product' | 'qty' | 'unit' | 'price' | 'sell';
+
+/**
+ * What still has to be filled in before this line can be saved. Each name maps to one box on the row,
+ * so the screen can mark exactly that box instead of saying "something is wrong somewhere".
+ */
+export function missingFields(it: ReviewItem, intent: Intent): Missing[] {
+  const out: Missing[] = [];
+  const named = !!newItemName(it);
+  if (!it.product && !(intent === 'purchase' && named)) out.push('product');
+  if (!(Number(it.qty) > 0)) out.push('qty');
+  if (!it.product && intent === 'purchase' && !it.unit.trim()) out.push('unit');
+  if (!(Number(it.unit_price) > 0)) out.push('price');
+  if (intent === 'purchase' && !(Number(it.sell_price) > 0)) out.push('sell');
+  return out;
+}
+
+/** Margin in rupees and percent on one buying line, or null until both prices are in. */
+export function rowMargin(it: ReviewItem): { amount: number; pct: number } | null {
+  const cost = Number(it.unit_price);
+  const sell = Number(it.sell_price);
+  if (!(cost > 0) || !(sell > 0)) return null;
+  return { amount: round2(sell - cost), pct: ((sell - cost) / cost) * 100 };
 }
 
 /**

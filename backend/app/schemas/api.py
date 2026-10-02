@@ -153,6 +153,9 @@ class FinalItem(BaseModel):
     qty: Decimal
     unit: str
     unit_price: Decimal
+    # Buying only: the price this product will now SELL at. The shopkeeper sets it on the same screen
+    # as the wholesaler's rate, so the margin is decided at the moment the cost is known.
+    sell_price: Decimal | None = None
     spoken_span: str | None = None
     llm_product_code: str | None = None
     llm_confidence: float | None = None

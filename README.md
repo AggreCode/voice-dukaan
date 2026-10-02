@@ -24,6 +24,26 @@ A priced table is read as a table: the column headings come back with the rows, 
 known to be a rate and not a quantity. An `amount` or `total` column is never mistaken for a unit price.
 The review screen totals `quantity × price per unit` over every line.
 
+## Using it
+
+Built for a shopkeeper who has never installed an app on purpose.
+
+- **One question first: Sell or Buy.** Home is two big buttons, green for selling and blue for buying,
+  with today's takings above them. Every screen after that stays in its colour, so a glance says which
+  side of the counter you are on.
+- **Three ways in, the same on both sides.** Speak, Photo or Type. Just the names are enough:
+  "basmati, marigold, tiger biscuit" becomes three lines with the quantities left empty in yellow, never
+  filled with a made-up 1. Save turns only the boxes still empty red.
+- **Buying asks for both prices on the same line**, what you paid and what you sell at, shows the
+  margin as you type, and saves both to the product. A new item is added to the stock as it is bought.
+- **Nothing half-done is lost.** Every change to a bill is kept on the phone. Walk off to another tab or
+  serve a customer, and Home shows "Not saved yet" with a Continue button. Only Save or Delete removes it.
+- **The microphone buzzes and chimes** when it starts and stops listening, the way Google's does.
+- **My stock** is a register: item, quantity, unit, selling price, cost price, margin. **Report** shows
+  what earns the most, what sells most often, and what has the best margin.
+- The big buttons carry a second line in Odia or Hindi, from the shop's language. That wording lives in
+  `frontend/src/lib/labels.ts`.
+
 ## How it works
 
 Two ways in, one review screen. Both produce lines of text joined with `|`, and everything after that

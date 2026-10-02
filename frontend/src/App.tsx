@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import BottomNav from './components/BottomNav';
 import { api, ApiError } from './lib/api';
@@ -10,6 +10,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Admin from './pages/Admin';
 import Home from './pages/Home';
+import Hub from './pages/Hub';
+import Report from './pages/Report';
 import Manual from './pages/Manual';
 import Record from './pages/Record';
 import Scan from './pages/Scan';
@@ -90,20 +92,39 @@ export default function App() {
     <div className="min-h-screen pb-[calc(64px+env(safe-area-inset-bottom))]">
       <Routes location={loc}>
         <Route path="/" element={<Home />} />
-        <Route path="/record" element={<Record />} />
-        <Route path="/scan" element={<Scan />} />
-        <Route path="/manual" element={<Manual />} />
+        <Route path="/sell" element={<Hub key="sell" mode="sale" />} />
+        <Route path="/buy" element={<Hub key="buy" mode="stock_in" />} />
+        <Route path="/sell/voice" element={<Record key="sv" mode="sale" />} />
+        <Route path="/buy/voice" element={<Record key="bv" mode="stock_in" />} />
+        <Route path="/sell/photo" element={<Scan key="sp" mode="sale" />} />
+        <Route path="/buy/photo" element={<Scan key="bp" mode="stock_in" />} />
+        <Route path="/sell/type" element={<Manual key="st" mode="sale" />} />
+        <Route path="/buy/type" element={<Manual key="bt" mode="stock_in" />} />
         <Route path="/review/:sessionId" element={<Review />} />
-        <Route path="/ledger" element={<Ledger />} />
-        <Route path="/products" element={<Products />} />
+        <Route path="/stock" element={<Products />} />
+        <Route path="/report" element={<Report />} />
+        <Route path="/bills" element={<Ledger />} />
         <Route path="/settings" element={<Settings />} />
         {/* The server answers this only for an admin account; everyone else gets a 404 from the API. */}
         <Route path="/admin" element={<Admin />} />
+        {/* Older addresses, from bookmarks and installed shortcuts, still land somewhere sensible. */}
+        <Route path="/record" element={<Legacy kind="voice" />} />
+        <Route path="/scan" element={<Legacy kind="photo" />} />
+        <Route path="/manual" element={<Legacy kind="type" />} />
+        <Route path="/products" element={<Navigate to="/stock" replace />} />
+        <Route path="/ledger" element={<Navigate to="/bills" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <BottomNav />
     </div>
   );
+}
+
+/** `/record?mode=stock_in` and friends, from before buying and selling had their own addresses. */
+function Legacy({ kind }: { kind: 'voice' | 'photo' | 'type' }) {
+  const [params] = useSearchParams();
+  const side = params.get('mode') === 'stock_in' ? 'buy' : 'sell';
+  return <Navigate to={`/${side}/${kind}`} replace />;
 }
 
 function Splash() {

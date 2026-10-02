@@ -83,8 +83,11 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
         elif llm is None:
             was_corrected = True
         else:
-            was_corrected = (llm.get("product_id") != item.product_code or llm.get("quantity") != float(item.qty)
-                             or llm.get("unit") != item.unit)
+            # A field the model left empty and the shopkeeper filled in is not a correction: nothing was
+            # wrong, something was missing. Counting it would make a bare list of names look like a
+            # transcript full of errors.
+            was_corrected = (llm.get("product_id") != item.product_code or _qty_changed(llm, item)
+                             or _unit_changed(llm, item))
         ti = TransactionItem(transaction_id=txn.id, product_id=product.id, qty=item.qty, unit=item.unit,
                              qty_base=item.qty, unit_price=item.unit_price, line_total=line_total,
                              spoken_span=item.spoken_span, llm_confidence=item.llm_confidence,
@@ -95,6 +98,14 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
                                    ref_type="transaction_item", ref_id=ti.id)
         if body.type == "sale":
             product.sold_count = (product.sold_count or 0) + 1
+        else:
+            # Buying sets this product's prices: what was just paid, and what it will now sell for.
+            # The last purchase wins for cost, because that is what the next one will cost too.
+            if item.unit_price > 0:
+                product.cost_price = item.unit_price
+            if item.sell_price is not None and item.sell_price > 0 and item.sell_price != product.sell_price:
+                product.sell_price = item.sell_price
+                catalog_changed = True  # the selling price is part of what the model is shown
 
         # corrections + alias learning
         if vs is not None:
@@ -112,13 +123,13 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
                 span = (llm.get("spoken_span") or item.spoken_span or "").strip()
                 if span and await _learn_alias(session, product, span):
                     catalog_changed = True
-            if llm.get("quantity") != float(item.qty):
+            if _qty_changed(llm, item):
                 session.add(Correction(voice_session_id=vs.id, shop_id=shop_id, item_index=item.item_index,
                                        spoken_span=llm.get("spoken_span"), llm_product_code=llm.get("product_id"),
                                        final_product_code=item.product_code, field="quantity",
                                        old_value={"quantity": llm.get("quantity")},
                                        new_value={"quantity": float(item.qty)}))
-            if llm.get("unit") != item.unit:
+            if _unit_changed(llm, item):
                 session.add(Correction(voice_session_id=vs.id, shop_id=shop_id, item_index=item.item_index,
                                        spoken_span=llm.get("spoken_span"), llm_product_code=llm.get("product_id"),
                                        final_product_code=item.product_code, field="unit",
@@ -175,6 +186,14 @@ async def _learn_alias(session: AsyncSession, product: Product, span: str) -> bo
     session.add(ProductAlias(product_id=product.id, alias=alias, lang="mixed", source="user_correction",
                              hit_count=1))
     return True
+
+
+def _qty_changed(llm: dict, item) -> bool:
+    return llm.get("quantity") is not None and llm.get("quantity") != float(item.qty)
+
+
+def _unit_changed(llm: dict, item) -> bool:
+    return bool(llm.get("unit")) and llm.get("unit") != item.unit
 
 
 def _final_dict(item) -> dict:

@@ -1,177 +1,179 @@
-import ConfidenceBadge, { confidenceLevel } from './ConfidenceBadge';
 import { COMMON_UNITS, extractionReasonLabel } from '../lib/constants';
-import { PickedProduct, PriceKind, ReviewItem, defaultUnitPrice, lineTotal } from '../lib/reviewModel';
+import {
+  Intent, Missing, PickedProduct, ReviewItem, defaultUnitPrice, lineTotal, missingFields, newItemName, rowMargin,
+} from '../lib/reviewModel';
 import { formatStock } from '../lib/stock';
 import { cx, fmtMoney } from '../lib/utils';
+import { CheckIcon, TrashIcon } from './Icons';
 
 interface Props {
   item: ReviewItem;
+  index: number;
+  intent: Intent;
   active: boolean;
   onChange: (next: ReviewItem) => void;
   onDelete: () => void;
   onPickProduct: () => void;
   onActivate: () => void;
-  /** "cost" for purchases: label price as cost and default to cost_price. */
-  priceKind?: PriceKind;
   /** Where the line came from, so the evidence under it reads "Heard" or "Written". */
-  source?: 'voice' | 'image';
-  /**
-   * True on a stock-in row whose product is not in the inventory yet. Stocking in is how a product
-   * ENTERS the inventory, so "not in your inventory" is not an error there, it is the normal first
-   * day of an item. The row stays editable and saving creates it.
-   */
+  source?: 'voice' | 'image' | 'manual';
+  /** Buying: a product not in the inventory yet is created on save rather than being an error. */
   newItemOk?: boolean;
   /** An existing inventory product this line probably means, offered instead of creating a duplicate. */
   suggestion?: PickedProduct | null;
   onUseSuggestion?: () => void;
-  /**
-   * Products this line could equally mean. A customer writes "biscuit" and the shop stocks nine of
-   * them; nobody but the shopkeeper can say which, so the candidates are offered here in one tap
-   * rather than hidden behind opening a picker. Choosing one also sets the line's price from it.
-   */
+  /** Products this line could equally mean ("biscuit" with nine biscuits on the shelf). */
   choices?: PickedProduct[];
   onChoose?: (p: PickedProduct) => void;
+  /** After a save attempt, empty required boxes turn red instead of amber. */
+  showErrors?: boolean;
 }
 
-export default function ItemRow({ item, active, onChange, onDelete, onPickProduct, onActivate, priceKind = 'sell', source = 'voice', newItemOk = false, suggestion = null, onUseSuggestion, choices = [], onChoose }: Props) {
-  const conf = item.original?.confidence ?? (item.product ? 1 : 0);
-  const level = confidenceLevel(conf, !!item.product);
-  const needsReviewRaw = item.original?.needs_review ?? false;
-  const needsReview = needsReviewRaw;
+/**
+ * One line of the bill.
+ *
+ * Empty boxes are amber, an invitation rather than an error, because a bare list of names is a fine
+ * way to start a bill. Only after the shopkeeper presses Save do the ones still empty turn red, and
+ * then only those boxes: never the whole line, never a message that leaves them hunting for what is
+ * wrong.
+ */
+export default function ItemRow({
+  item, index, intent, active, onChange, onDelete, onPickProduct, onActivate, source = 'voice', newItemOk = false,
+  suggestion = null, onUseSuggestion, choices = [], onChoose, showErrors = false,
+}: Props) {
+  const buying = intent === 'purchase';
+  const missing = new Set<Missing>(missingFields(item, intent));
   const isNew = !item.product && newItemOk;
-  // Offer the choice whenever the line is still open to question, not only when nothing matched.
-  const showChoices = choices.length > 0 && !!onChoose && (!item.product || needsReviewRaw);
-  // "Not in your inventory" is the whole point of a stock-in line, so it is not worth saying twice.
-  const reasonText = isNew
-    ? extractionReasonLabel((item.original?.reason ?? '').split(',').filter((r) => r.trim() !== 'not_in_catalog').join(','))
-    : extractionReasonLabel(item.original?.reason);
-  const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+  // Worth a "Check" only when something about WHICH product is in doubt. A missing quantity or unit
+  // is already shown by its own yellow box; repeating it as a pill only crowds out the product's name.
+  const needsReview = (item.original?.reason ?? '')
+    .split(',')
+    .map((r) => r.trim())
+    .some((r) => r && !['no_quantity', 'no_quantity_evidence', 'unit_assumed', 'not_in_catalog'].includes(r))
+    || (item.original?.needs_review === true && (item.original?.confidence ?? 1) < 0.6);
+  const showChoices = choices.length > 1 && !!onChoose && (!item.product || needsReview);
+  const reason = extractionReasonLabel(
+    (item.original?.reason ?? '')
+      .split(',')
+      .filter((r) => !['not_in_catalog', 'no_quantity', 'unit_assumed', 'low_confidence'].includes(r.trim()))
+      .join(','),
+  );
+  const margin = buying ? rowMargin(item) : null;
 
-  const setUnit = (unit: string) => {
-    const price = item.priceTouched ? item.unit_price : defaultUnitPrice(item.product, priceKind) ?? item.unit_price;
-    onChange({ ...item, unit, unit_price: price });
-  };
+  const box = (field: Missing) =>
+    cx(
+      'mt-1 min-h-[52px] w-full rounded-xl border-2 px-3 text-lg font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-4',
+      missing.has(field)
+        ? showErrors
+          ? 'border-red-500 bg-red-50 placeholder:text-red-400 focus:ring-red-200'
+          : 'border-dashed border-amber-400 bg-amber-50/70 placeholder:text-amber-600/70 focus:ring-amber-200'
+        : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-slate-200',
+    );
+  const label = (field: Missing) =>
+    cx('block text-xs font-bold uppercase tracking-wide', missing.has(field) && showErrors ? 'text-red-600' : 'text-slate-500');
+
+  const num = (v: string): number | null => (v.trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
   return (
     <li
       onClick={onActivate}
       onFocus={onActivate}
       className={cx(
-        'rounded-xl border p-3 transition-colors',
-        active ? 'border-primary ring-2 ring-primary/30' : 'border-slate-200',
-        isNew ? 'bg-primary/5' : needsReview || level === 'red' ? 'bg-red-50' : level === 'amber' ? 'bg-amber-50/60' : 'bg-white',
+        'rounded-2xl border-2 bg-white p-3 shadow-sm transition-colors',
+        active ? 'border-slate-400' : missing.size > 0 && showErrors ? 'border-red-300' : 'border-slate-100',
       )}
     >
+      {/* ---- what it is ---- */}
       <div className="flex items-start gap-2">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onActivate();
-            onPickProduct();
-          }}
-          className={cx(
-            'min-h-[48px] min-w-0 flex-1 rounded-lg border px-3 py-1.5 text-left',
-            item.product ? 'border-slate-300 bg-white' : isNew ? 'border-dashed border-primary/60 bg-white' : 'border-dashed border-red-400 bg-white',
-          )}
-        >
-          {item.product ? (
-            <>
-              <div className="truncate font-semibold text-slate-900">{item.product.name}</div>
-              {item.product.local_name && <div className="truncate text-sm text-slate-500">{item.product.local_name}</div>}
-              <div className="truncate text-xs text-slate-500">
-                {item.product.brand ? item.product.brand + ' · ' : ''}
-                {item.product.code} · stock {formatStock(item.product.stock_qty, item.product.unit)}
-              </div>
-            </>
-          ) : isNew ? (
-            <>
-              <div className="truncate font-semibold text-primary-dark">
-                {item.original?.product_name_guess || 'New item'} <span className="font-normal">▾</span>
-              </div>
-              <div className="text-xs text-primary">Will be added to your inventory · tap to pick an existing one</div>
-            </>
-          ) : (
-            <>
-              <div className="truncate font-semibold text-red-700">
-                {item.original?.product_name_guess || 'Choose product'} <span className="font-normal">▾</span>
-              </div>
-              <div className="text-xs text-red-600">Tap to pick a product</div>
-            </>
-          )}
-        </button>
+        <span className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">
+          {index + 1}
+        </span>
+
         {isNew ? (
-          <span className="mt-1 shrink-0 rounded-full bg-primary/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-primary-dark">
-            New
-          </span>
+          <div className="min-w-0 flex-1">
+            <input
+              value={newItemName(item)}
+              onChange={(e) => onChange({ ...item, newName: e.target.value })}
+              placeholder="Item name"
+              className={cx(
+                'min-h-[52px] w-full rounded-xl border-2 border-blue-300 bg-blue-50/60 px-3 text-lg font-bold text-slate-900',
+                'focus:outline-none focus:ring-4 focus:ring-blue-200',
+              )}
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onActivate();
+                onPickProduct();
+              }}
+              className="mt-1 min-h-[36px] text-sm font-semibold text-blue-700 underline"
+            >
+              New item · or choose from my stock
+            </button>
+          </div>
         ) : (
-          <ConfidenceBadge confidence={conf} hasProduct={!!item.product} className="mt-1 shrink-0" />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onActivate();
+              onPickProduct();
+            }}
+            className={cx(
+              'min-h-[56px] min-w-0 flex-1 rounded-xl border-2 px-3 py-1.5 text-left',
+              item.product
+                ? 'border-slate-200 bg-white'
+                : showErrors
+                  ? 'border-red-500 bg-red-50'
+                  : 'border-dashed border-amber-400 bg-amber-50/70',
+            )}
+          >
+            {item.product ? (
+              <>
+                <span className="line-clamp-2 text-lg font-bold leading-snug text-slate-900">{item.product.name}</span>
+                <span className="block truncate text-xs text-slate-500">
+                  {item.product.local_name ? `${item.product.local_name} · ` : ''}
+                  stock {formatStock(item.product.stock_qty, item.product.unit)}
+                  {item.product.sell_price > 0 && ` · ${fmtMoney(item.product.sell_price)}/${item.product.unit}`}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="block truncate text-lg font-bold text-amber-800">
+                  {newItemName(item) || 'Choose item'} <span className="font-normal">▾</span>
+                </span>
+                <span className="block text-xs font-semibold text-amber-700">
+                  {newItemName(item) ? 'Not in your stock — tap to choose' : 'Tap to choose from your stock'}
+                </span>
+              </>
+            )}
+          </button>
         )}
+
+        <StatusPill product={!!item.product} isNew={isNew} needsReview={needsReview} />
+
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          aria-label="Delete item"
-          className="min-h-[44px] min-w-[44px] shrink-0 rounded-lg text-xl text-slate-400 hover:bg-red-100 hover:text-red-600"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-slate-400 active:bg-red-50 active:text-red-600"
+          aria-label={`Remove line ${index + 1}`}
         >
-          🗑
+          <TrashIcon className="h-6 w-6" />
         </button>
       </div>
 
-      <div className="mt-2 grid grid-cols-[1fr_1.3fr_1.2fr] gap-2">
-        <label className="text-[11px] text-slate-500">
-          Qty
-          <input
-            className={field}
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            value={item.qty}
-            onChange={(e) => onChange({ ...item, qty: Number(e.target.value) })}
-          />
-        </label>
-        <label className="text-[11px] text-slate-500">
-          Unit {item.original?.unit_raw && item.original.unit_raw !== item.unit ? <span className="text-slate-400">({item.original.unit_raw})</span> : null}
-          <input
-            className={field}
-            list="item-row-units"
-            value={item.unit}
-            onChange={(e) => setUnit(e.target.value)}
-          />
-          <datalist id="item-row-units">
-            {COMMON_UNITS.map((u) => (
-              <option key={u} value={u} />
-            ))}
-          </datalist>
-        </label>
-        <label className="text-[11px] text-slate-500">
-          {priceKind === 'cost' ? 'Cost per unit ₹' : 'Price ₹'}
-          <input
-            className={field}
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            value={item.unit_price}
-            onChange={(e) => onChange({ ...item, unit_price: Number(e.target.value), priceTouched: true })}
-          />
-        </label>
-      </div>
-
-      {/* Too general to answer for them: "biscuit", "soap", "oil". Show the shop's own products that
-          fit, with the price each would bill at, so one tap settles both the product and the price. */}
+      {/* ---- "biscuit": which one? ---- */}
       {showChoices && (
-        <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50/70 p-2">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-            Which one?
-          </p>
+        <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-2">
+          <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-amber-800">Which one?</p>
           <div className="flex flex-wrap gap-1.5">
             {choices.slice(0, 4).map((c) => {
               const chosen = item.product?.code === c.code;
-              const price = priceKind === 'cost' && c.cost_price ? c.cost_price : c.sell_price;
+              const price = defaultUnitPrice(c, buying ? 'cost' : 'sell');
               return (
                 <button
                   key={c.code}
@@ -181,13 +183,13 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
                     onChoose?.(c);
                   }}
                   className={cx(
-                    'min-h-[44px] max-w-full rounded-lg border px-2.5 py-1 text-left',
-                    chosen ? 'border-primary bg-primary text-white' : 'border-slate-300 bg-white',
+                    'min-h-[48px] max-w-full rounded-xl border-2 px-3 py-1 text-left',
+                    chosen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white',
                   )}
                 >
-                  <span className="block truncate text-sm font-semibold">{c.name}</span>
-                  <span className={cx('block text-[11px]', chosen ? 'text-white/80' : 'text-slate-500')}>
-                    {fmtMoney(price)}/{c.unit} · {formatStock(c.stock_qty, c.unit)}
+                  <span className="block truncate text-sm font-bold">{c.name}</span>
+                  <span className={cx('block text-xs', chosen ? 'text-white/80' : 'text-slate-500')}>
+                    {price !== null ? `${fmtMoney(price)}/${c.unit}` : 'no price yet'} · {formatStock(c.stock_qty, c.unit)}
                   </span>
                 </button>
               );
@@ -198,7 +200,7 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
                 e.stopPropagation();
                 onPickProduct();
               }}
-              className="min-h-[44px] rounded-lg border border-dashed border-slate-400 px-3 text-xs font-semibold text-slate-600"
+              className="min-h-[48px] rounded-xl border-2 border-dashed border-slate-300 px-3 text-sm font-semibold text-slate-600"
             >
               Other…
             </button>
@@ -206,13 +208,12 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
         </div>
       )}
 
-      {/* The wholesaler's wording is never the shop's, so a line that looks new may well be a product
-          already on the shelf. Offer it before anything gets created twice. */}
+      {/* ---- buying something that is probably already on the shelf ---- */}
       {isNew && suggestion && onUseSuggestion && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-primary/40 bg-white px-2 py-1.5">
+        <div className="mt-2 flex items-center gap-2 rounded-xl border-2 border-blue-200 bg-white px-2.5 py-2">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] text-slate-500">Already in your inventory</p>
-            <p className="truncate text-sm font-semibold text-slate-800">
+            <p className="text-xs font-semibold text-slate-500">Already in your stock?</p>
+            <p className="truncate font-bold text-slate-900">
               {suggestion.name}
               <span className="ml-1 font-normal text-slate-500">· {formatStock(suggestion.stock_qty, suggestion.unit)}</span>
             </p>
@@ -223,33 +224,112 @@ export default function ItemRow({ item, active, onChange, onDelete, onPickProduc
               e.stopPropagation();
               onUseSuggestion();
             }}
-            className="min-h-[40px] shrink-0 rounded-lg bg-primary px-3 text-xs font-bold text-white"
+            className="min-h-[44px] shrink-0 rounded-xl bg-blue-600 px-3 text-sm font-bold text-white active:bg-blue-700"
           >
-            Add stock to it
+            Yes, add to it
           </button>
         </div>
       )}
 
-      {/* Evidence, then what to do about it: the words this line came from, and any flag in plain
-          language. Both, not one or the other -- the words are how the shopkeeper judges the flag. */}
+      {/* ---- how many, of what ---- */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <label onClick={(e) => e.stopPropagation()}>
+          <span className={label('qty')}>Quantity</span>
+          <input
+            className={box('qty')}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            placeholder="Fill"
+            value={item.qty ?? ''}
+            onChange={(e) => onChange({ ...item, qty: num(e.target.value) })}
+          />
+        </label>
+        <label onClick={(e) => e.stopPropagation()}>
+          <span className={label('unit')}>Unit</span>
+          <input
+            className={box('unit')}
+            list={`units-${item.key}`}
+            placeholder={item.product?.unit || 'kg, packet…'}
+            value={item.unit}
+            onChange={(e) => onChange({ ...item, unit: e.target.value })}
+          />
+          <datalist id={`units-${item.key}`}>
+            {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
+          </datalist>
+        </label>
+      </div>
+
+      {/* ---- at what price ---- */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <label onClick={(e) => e.stopPropagation()} className={buying ? '' : 'col-span-2'}>
+          <span className={label('price')}>{buying ? 'Cost price ₹' : 'Price ₹'}</span>
+          <input
+            className={box('price')}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            placeholder={buying ? 'What you paid' : 'Fill'}
+            value={item.unit_price ?? ''}
+            onChange={(e) => onChange({ ...item, unit_price: num(e.target.value), priceTouched: true })}
+          />
+        </label>
+        {buying && (
+          <label onClick={(e) => e.stopPropagation()}>
+            <span className={label('sell')}>Selling price ₹</span>
+            <input
+              className={box('sell')}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              placeholder="You sell at"
+              value={item.sell_price ?? ''}
+              onChange={(e) => onChange({ ...item, sell_price: num(e.target.value) })}
+            />
+          </label>
+        )}
+      </div>
+
+      {/* ---- the evidence, and what this line adds up to ---- */}
       <div className="mt-2 flex items-end justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {item.original?.spoken_span ? (
-            <p className="truncate text-[11px] text-slate-500">
-              <span className="mr-1 font-medium text-slate-400">{source === 'image' ? 'Written' : 'Heard'}</span>
-              “{item.original.spoken_span}”
-            </p>
-          ) : item.item_index === null ? (
-            <p className="text-[11px] text-slate-500">Added by hand</p>
-          ) : null}
-          {reasonText && (
-            <p className={cx('truncate text-[11px] font-medium', level === 'red' ? 'text-red-700' : 'text-amber-700')}>
-              {reasonText}
+        <div className="min-w-0 flex-1 text-xs">
+          {margin && (
+            <p className={cx('font-bold', margin.amount >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+              {margin.amount >= 0 ? 'You earn' : 'Loss of'} {fmtMoney(Math.abs(margin.amount))} each · {margin.pct.toFixed(0)}%
             </p>
           )}
+          {item.original?.spoken_span && (
+            <p className="truncate text-slate-500">
+              <span className="mr-1 font-semibold text-slate-400">{source === 'image' ? 'Written' : 'Heard'}</span>
+              “{item.original.spoken_span}”
+            </p>
+          )}
+          {reason && <p className="truncate font-semibold text-amber-700">{reason}</p>}
         </div>
-        <p className="shrink-0 text-sm font-semibold text-slate-800">= {fmtMoney(lineTotal(item))}</p>
+        <p className="shrink-0 text-lg font-extrabold tabular-nums text-slate-900">
+          {lineTotal(item) > 0 ? fmtMoney(lineTotal(item)) : <span className="text-slate-300">₹ —</span>}
+        </p>
       </div>
     </li>
   );
+}
+
+function StatusPill({ product, isNew, needsReview }: { product: boolean; isNew: boolean; needsReview: boolean }) {
+  if (isNew) {
+    return <span className="mt-3 shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-extrabold uppercase text-blue-800">New</span>;
+  }
+  if (product && !needsReview) {
+    return (
+      <span className="mt-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-label="Matched">
+        <CheckIcon className="h-4 w-4" />
+      </span>
+    );
+  }
+  if (product) {
+    return <span className="mt-3 shrink-0 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-extrabold uppercase text-amber-800">Check</span>;
+  }
+  return null;
 }

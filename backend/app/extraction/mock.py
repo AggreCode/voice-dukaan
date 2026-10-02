@@ -40,7 +40,7 @@ class MockExtractor:
                 spoken_span=frag,
                 product_id=None,
                 product_name_guess=frag,
-                quantity=1,
+                quantity=None,
                 unit="",
                 unit_price=None,
                 alternatives=[],

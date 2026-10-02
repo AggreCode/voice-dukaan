@@ -1,75 +1,59 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { cx } from '../lib/utils';
+import { WordKey, useLocal } from '../lib/labels';
 import { usePendingCount } from '../lib/uploadQueue';
+import { useDrafts } from '../lib/drafts';
+import { cx } from '../lib/utils';
+import { ChartIcon, HomeIcon, ListIcon, MoreIcon } from './Icons';
 
-// One tab to start a bill, whichever of the three ways it starts. Speaking, photographing and typing
-// are choices on that screen rather than competing tabs, so the bar stays readable on a small phone
-// and none of the three looks like the poor relation.
-const tabs = [
-  { to: '/', label: 'Bill', icon: ShopIcon, also: ['/record', '/scan', '/manual'] },
-  { to: '/ledger', label: 'Ledger', icon: LedgerIcon, also: [] as string[] },
-  { to: '/products', label: 'Inventory', icon: BoxIcon, also: [] as string[] },
-  { to: '/settings', label: 'Settings', icon: GearIcon, also: [] as string[] },
+/**
+ * Four places, the same four on every screen, each with a picture, an English word and the shop's own
+ * word. Home holds everything to do with making a bill; the other three are things to look at.
+ * A dot on Home means a bill is waiting there, unfinished or unsent.
+ */
+const tabs: { to: string; label: string; local: WordKey; icon: typeof HomeIcon; match: (p: string) => boolean }[] = [
+  { to: '/', label: 'Home', local: 'home', icon: HomeIcon, match: (p) => p === '/' || /^\/(sell|buy|review)(\/|$)/.test(p) },
+  { to: '/stock', label: 'Stock', local: 'stock', icon: ListIcon, match: (p) => p.startsWith('/stock') },
+  { to: '/report', label: 'Report', local: 'report', icon: ChartIcon, match: (p) => p.startsWith('/report') || p.startsWith('/bills') },
+  { to: '/settings', label: 'More', local: 'more', icon: MoreIcon, match: (p) => p.startsWith('/settings') || p.startsWith('/admin') },
 ];
 
 export default function BottomNav() {
   const pending = usePendingCount();
+  const drafts = useDrafts().length;
+  const word = useLocal();
   const { pathname } = useLocation();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
       <ul className="mx-auto grid max-w-md grid-cols-4">
-        {tabs.map((t) => (
-          <li key={t.to}>
-            <NavLink
-              to={t.to}
-              end={t.to === '/'}
-              className={({ isActive }) =>
-                cx(
-                  'relative flex min-h-[60px] flex-col items-center justify-center gap-0.5 text-xs font-medium',
-                  isActive || t.also.includes(pathname) ? 'text-primary' : 'text-slate-500',
-                )
-              }
-            >
-              <t.icon className="h-6 w-6" />
-              <span>{t.label}</span>
-              {t.to === '/' && pending > 0 && (
-                <span className="absolute right-3 top-2 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">{pending}</span>
-              )}
-            </NavLink>
-          </li>
-        ))}
+        {tabs.map((t) => {
+          const active = t.match(pathname);
+          const badge = t.to === '/' ? pending + drafts : 0;
+          return (
+            <li key={t.to}>
+              <NavLink
+                to={t.to}
+                className={cx(
+                  'relative flex min-h-[64px] flex-col items-center justify-center gap-0.5',
+                  active ? 'text-slate-900' : 'text-slate-400',
+                )}
+              >
+                <span className={cx('flex h-8 w-14 items-center justify-center rounded-full transition-colors', active && 'bg-slate-900 text-white')}>
+                  <t.icon className="h-6 w-6" />
+                </span>
+                <span className="text-xs font-bold leading-none">
+                  {t.label}
+                  {word(t.local) && <span className="ml-1 font-semibold opacity-70">{word(t.local)}</span>}
+                </span>
+                {badge > 0 && (
+                  <span className="absolute right-[22%] top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-extrabold text-white">
+                    {badge}
+                  </span>
+                )}
+              </NavLink>
+            </li>
+          );
+        })}
       </ul>
     </nav>
-  );
-}
-
-function ShopIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 9h16l-1.4-3a2 2 0 0 0-1.8-1.1H7.2A2 2 0 0 0 5.4 6L4 9z" />
-      <path d="M5.5 10.5V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-8.5M10 20v-5.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V20" />
-    </svg>
-  );
-}
-function LedgerIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 3h14a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8 8h8M8 12h8M8 16h5" />
-    </svg>
-  );
-}
-function BoxIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8" />
-    </svg>
-  );
-}
-function GearIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-    </svg>
   );
 }

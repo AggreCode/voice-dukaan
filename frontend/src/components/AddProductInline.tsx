@@ -17,8 +17,11 @@ const field = 'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white p
 const label = 'text-xs text-slate-600';
 
 /**
- * Quick add: exactly 3 required fields (name, unit, quantity). Manual entry and voice dictation
- * (see Record/Review) are the only two ways to add or receive stock — this is the manual one.
+ * Adding a new item to the stock: name, unit, what it cost and what it sells for.
+ *
+ * Both prices are required. An item with a selling price and no cost hides its margin from every
+ * report, and one with a cost and no selling price can be billed at zero. Each empty required box is
+ * marked red the moment the shopkeeper tries to save, and says what it needs.
  */
 export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
   const qc = useQueryClient();
@@ -39,6 +42,7 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
   const [aliases, setAliases] = useState('');
 
   const [err, setErr] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedName(name.trim()), 250);
@@ -70,14 +74,22 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
     onError: (e) => setErr(e instanceof ApiError ? e.message : (e as Error).message),
   });
 
+  const sellN = numOrNull(sellPrice);
+  const costN = numOrNull(costPrice);
+  const bad = {
+    name: !name.trim(),
+    unit: !unit.trim(),
+    sell: !(sellN !== null && sellN > 0),
+    cost: !(costN !== null && costN > 0),
+  };
+  const req = (wrong: boolean) =>
+    cx(field, 'min-h-[52px] text-lg', tried && wrong && '!border-2 !border-red-500 !bg-red-50 focus:ring-red-200');
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setErr('Name is required');
-      return;
-    }
-    if (!unit.trim()) {
-      setErr('Unit is required');
+    setTried(true);
+    if (bad.name || bad.unit || bad.sell || bad.cost) {
+      setErr('Fill the boxes marked in red.');
       return;
     }
     setErr(null);
@@ -90,10 +102,8 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
     if (localName.trim()) body.local_name = localName.trim();
     if (brand.trim()) body.brand = brand.trim();
     if (category.trim()) body.category = category.trim();
-    const sell = numOrNull(sellPrice);
-    if (sell !== null && sell >= 0) body.sell_price = sell;
-    const cost = numOrNull(costPrice);
-    if (cost !== null && cost >= 0) body.cost_price = cost;
+    body.sell_price = sellN!;
+    body.cost_price = costN!;
     const low = numOrNull(lowStock);
     if (low !== null && low >= 0) body.low_stock_threshold = low;
     const aliasList = aliases.split(',').map((a) => a.trim()).filter(Boolean);
@@ -104,14 +114,14 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
   const suggestions = glossary.data ?? [];
 
   return (
-    <form onSubmit={submit} className="rounded-xl border border-primary/30 bg-primary-light/30 p-3">
-      <p className="mb-2 text-sm font-semibold text-primary-dark">New product</p>
+    <form onSubmit={submit} noValidate className="rounded-2xl bg-white p-1">
+      <p className="mb-2 text-xl font-extrabold text-slate-900">New item</p>
       <div className="space-y-2">
         <div ref={nameBoxRef} className="relative">
           <label className={label}>
             Product name *
             <input
-              className={field}
+              className={req(bad.name)}
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -119,7 +129,7 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
               }}
               onFocus={() => setShowSuggestions(true)}
               autoComplete="off"
-              required
+              
             />
           </label>
           {showSuggestions && debouncedName.length >= 1 && suggestions.length > 0 && (
@@ -149,12 +159,11 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
           <label className={label}>
             Unit *
             <input
-              className={field}
+              className={req(bad.unit)}
               list="add-product-units"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
               placeholder="e.g. kg, box"
-              required
             />
             <datalist id="add-product-units">
               {COMMON_UNITS.map((u) => (
@@ -163,7 +172,7 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
             </datalist>
           </label>
           <label className={label}>
-            Quantity
+            Quantity in stock
             <input
               className={field}
               type="number"
@@ -176,6 +185,27 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
             />
           </label>
         </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className={label}>
+            Cost price ₹ *
+            <input className={req(bad.cost)} type="number" inputMode="decimal" min={0} step="any" value={costPrice}
+                   placeholder="What you pay" onChange={(e) => setCostPrice(e.target.value)} />
+            {tried && bad.cost && <span className="text-xs font-semibold text-red-600">Required</span>}
+          </label>
+          <label className={label}>
+            Selling price ₹ *
+            <input className={req(bad.sell)} type="number" inputMode="decimal" min={0} step="any" value={sellPrice}
+                   placeholder="You sell at" onChange={(e) => setSellPrice(e.target.value)} />
+            {tried && bad.sell && <span className="text-xs font-semibold text-red-600">Required</span>}
+          </label>
+        </div>
+        {sellN !== null && costN !== null && costN > 0 && sellN > 0 && (
+          <p className={cx('text-sm font-bold', sellN >= costN ? 'text-emerald-700' : 'text-red-600')}>
+            {sellN >= costN ? 'You earn' : 'Loss of'} ₹{Math.abs(Math.round((sellN - costN) * 100) / 100)} each ·{' '}
+            {(((sellN - costN) / costN) * 100).toFixed(0)}%
+          </p>
+        )}
 
         <button
           type="button"
@@ -198,14 +228,6 @@ export function AddProductInline({ initialName, onCancel, onCreated }: Props) {
           <label className={label}>
             Category
             <input className={field} value={category} onChange={(e) => setCategory(e.target.value)} />
-          </label>
-          <label className={label}>
-            Selling price ₹
-            <input className={field} type="number" inputMode="decimal" min={0} step="any" value={sellPrice} onChange={(e) => setSellPrice(e.target.value)} />
-          </label>
-          <label className={label}>
-            Cost price ₹
-            <input className={field} type="number" inputMode="decimal" min={0} step="any" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} placeholder="Optional" />
           </label>
           <label className={label}>
             Low stock at

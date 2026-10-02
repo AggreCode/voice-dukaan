@@ -52,7 +52,8 @@ def snapshot_from_csv(csv_path: Path, shop_type: str) -> CatalogSnapshot:
 def score(pred_items: list, golden_items: list[dict], snap: CatalogSnapshot) -> dict:
     name_by_code = {c: p.name for c, p in snap.products.items()}
     # `unit` became free text when pack/sub-unit math was dropped (migration 0004); it is no longer an enum.
-    pred = [(name_by_code.get(i.product_id), float(i.quantity), i.unit) for i in pred_items]
+    pred = [(name_by_code.get(i.product_id), float(i.quantity) if i.quantity is not None else -1.0, i.unit)
+            for i in pred_items]
     gold = [(g["product_name"], float(g["quantity"]), g["unit"]) for g in golden_items]
     used = [False] * len(gold)
     tp_full = tp_prod = 0

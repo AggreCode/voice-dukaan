@@ -57,11 +57,12 @@ def apply_guards(
 
         # quantity sanity + evidence. A quantity of 1 with no number spoken is a silent default (often an ASR drop,
         # e.g. "ପାରାସିଟାମଲ ଦଶ ଗୋଟା" transcribed as "ପାରାସିଟାମଲ୍ସ ଗୋଟା"), so it is flagged too.
-        if item.quantity is None or item.quantity <= 0:
-            item.quantity = 1.0
+        # No number in the words means no quantity, whatever the model put there: an empty box the
+        # shopkeeper fills beats a confident 1 that nobody said.
+        if item.quantity is not None and (item.quantity <= 0 or not has_number_evidence(item.spoken_span)):
+            item.quantity = None
+        if item.quantity is None:
             _flag(item, "no_quantity")
-        elif not has_number_evidence(item.spoken_span):
-            _flag(item, "no_quantity" if item.quantity == 1.0 else "no_quantity_evidence")
 
         # price only with spoken evidence
         if item.unit_price is not None:

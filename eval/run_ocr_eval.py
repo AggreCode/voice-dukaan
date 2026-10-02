@@ -87,7 +87,7 @@ def item_scores(items, snap, gold_items: list[dict]) -> tuple[int, int, int]:
                 continue
             used[j] = True
             tp_product += 1
-            if abs(float(it.quantity) - g[1]) < 1e-6 and (g[2] is None or it.unit == g[2]):
+            if it.quantity is not None and abs(float(it.quantity) - g[1]) < 1e-6 and (g[2] is None or it.unit == g[2]):
                 tp_full += 1
             break
     return tp_product, tp_full, len(gold)

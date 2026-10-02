@@ -1,49 +1,35 @@
 import { useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useToast } from '../components/Toast';
 import { blankSession } from '../lib/reviewModel';
+import { SIDE } from '../lib/theme';
 import { VoiceMode } from '../lib/types';
-import { fmtMoney } from '../lib/utils';
 import { ReviewForm } from './Review';
 
-function parseMode(v: string | null | undefined): VoiceMode {
-  return v === 'stock_in' ? 'stock_in' : 'sale';
-}
-
 /**
- * Typing a bill in by hand.
+ * Writing a bill by hand.
  *
- * It is the same editor a recording or a photograph lands in, started empty. Speech fails in a noisy
- * shop, a customer may hand over nothing at all, and some bills are two lines that are quicker to
- * type than to say. None of that should mean a different screen, a different save or a different set
- * of prices.
+ * The same editor a recording or a photograph lands in, started with one empty line. Speech fails at
+ * a noisy counter, a customer may hand over nothing at all, and some bills are two lines quicker to
+ * type than to say. None of that should mean a different screen, a different save or different prices.
+ * Like every bill, it is kept on the phone until it is saved or deleted.
  */
-export default function Manual() {
+export default function Manual({ mode }: { mode: VoiceMode }) {
   const nav = useNavigate();
-  const toast = useToast();
   const qc = useQueryClient();
-  const [searchParams] = useSearchParams();
-  const mode = parseMode(searchParams.get('mode'));
-
-  // A new identity per mode, so switching between selling and buying starts a clean bill.
   const session = useMemo(() => blankSession(mode), [mode]);
+  const side = SIDE[mode];
 
   return (
     <ReviewForm
       key={mode}
       session={session}
-      backTo={{ to: '/', label: 'Home' }}
+      backTo={`/${side}`}
       onSaved={(r) => {
         void qc.invalidateQueries({ queryKey: ['transactions'] });
         void qc.invalidateQueries({ queryKey: ['products'] });
-        if (r.type === 'purchase') {
-          toast.success(`Stock added: ${r.count} item${r.count === 1 ? '' : 's'}`);
-          nav('/products', { replace: true });
-        } else {
-          toast.success(`Bill saved: ${fmtMoney(r.total)}`);
-          nav('/ledger', { replace: true });
-        }
+        void qc.invalidateQueries({ queryKey: ['analytics'] });
+        nav(`/${side}?saved=${r.total}&n=${r.count}`, { replace: true });
       }}
     />
   );

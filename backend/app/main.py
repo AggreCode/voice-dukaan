@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import admin, auth, glossary, products, scan, shops, transactions, voice
+from app.api import admin, analytics, auth, glossary, products, scan, shops, transactions, voice
 from app.config import get_settings
 from app.db import get_engine
 
@@ -45,6 +45,7 @@ app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_origins, al
                    allow_methods=["*"], allow_headers=["*"])
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)
 app.include_router(shops.router)
 app.include_router(glossary.router)
 app.include_router(products.router)

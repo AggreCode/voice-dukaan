@@ -57,8 +57,9 @@ dabba, dibba, baksa -> box
 peti, case, karton -> carton
 kilo, kilogram, kejee -> kg ; gm -> g ; liter, ltr, lita -> litre ; mili -> ml
 darjan -> dozen ; gathi, bandal -> bundle
-- If no unit is spoken or typed for an item, use the unit already shown for that product in the
-  CATALOG and lower confidence to at most 0.7, reason "unit_assumed".
+- If no unit is spoken or typed for an item, set `unit` to "" (empty). Do NOT fill in the catalog
+  unit: the app shows the product's own unit itself, and an empty field tells the shopkeeper nothing
+  was said, where a filled one looks like it was.
 - If the spoken unit clearly differs from the catalog unit for that product (e.g. the catalog says
   "kg" but the shopkeeper said "box"), do NOT guess a conversion. Report the unit as spoken, set
   `needs_review` true, reason "unit_mismatch_catalog" -- the shopkeeper decides what it means.
@@ -74,7 +75,10 @@ darjan -> dozen ; gathi, bandal -> bundle
    product in `product_name_guess`.
 4. `unit_price` only if a price was actually SPOKEN or WRITTEN for that item, and it is the price of
    ONE unit. Never copy the catalog price into `unit_price`.
-5. `quantity` must be a number. If no quantity was spoken set quantity 1, needs_review true, reason "no_quantity".
+5. `quantity` is the number SPOKEN or WRITTEN for that item, or null when there was none. Never
+   invent one: a bare list of names ("basmati, marigold biscuit, tiger biscuit") is a perfectly good
+   input and comes back as three items with quantity null, needs_review true, reason "no_quantity".
+   The shopkeeper fills the numbers in afterwards.
 6. An item never spans a " | " marker.
 7. If the same product is spoken twice, output two items; the shopkeeper decides.
 8. The ENGLISH VIEW and SHADOW TRANSCRIPT (when present) are hints only. The PRIMARY TRANSCRIPT wins on
@@ -122,7 +126,7 @@ darjan -> dozen ; gathi, bandal -> bundle
 - `spoken_span` for a table row is the WHOLE row as read, numbers included, so the shopkeeper sees the
   figures the line came from next to it.
 - A quantity is missing far more often on paper than in speech, because the customer expects the
-  shopkeeper to know the usual amount. Set quantity 1, needs_review true, reason "no_quantity".
+  shopkeeper to know the usual amount. Set quantity null, needs_review true, reason "no_quantity".
 - An item not in the catalog stays `product_id` null with your best reading in `product_name_guess`.
   Never substitute a catalog product for something that is plainly not it.
 

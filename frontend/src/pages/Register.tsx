@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { MeOut, RegisterIn, ShopType } from '../lib/types';
 import { cx } from '../lib/utils';
-import { Brand, PasswordField, fieldClass, labelClass } from './Login';
+import { Brand, PasswordField, fieldClass, invalidClass, labelClass } from './Login';
 
 const MIN_PASSWORD = 8;
 
@@ -38,6 +38,8 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
   const [confirm, setConfirm] = useState('');
   const [available, setAvailable] = useState<{ ok: boolean; reason: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [tried1, setTried1] = useState(false);
+  const [tried2, setTried2] = useState(false);
 
   // Tell them the username is taken while they type it, not after they have filled in everything else.
   useEffect(() => {
@@ -81,20 +83,45 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
     onError: (e) => setErr(e instanceof ApiError ? e.message : (e as Error).message),
   });
 
-  const step1Ok = name.trim().length >= 2 && mobileOk(mobile) && (sameWhatsapp || !whatsapp.trim() || mobileOk(whatsapp));
-  const step2Ok =
-    usernameOk(username.trim().toLowerCase()) &&
-    available?.ok !== false &&
-    password.length >= MIN_PASSWORD &&
-    password === confirm;
+  /**
+   * What is wrong with each box, in words a shopkeeper would use, or null when it is fine.
+   *
+   * A box goes red the moment it has something wrong IN it -- a space typed into the username shows
+   * immediately, not after pressing Next. An EMPTY required box only goes red once they have tried to
+   * move on, so a fresh form does not open covered in red.
+   */
+  const gstClean = gst.replace(/\s/g, '').toUpperCase();
+  const u = username.trim().toLowerCase();
+  const problem = {
+    name: name.trim().length === 0 ? (tried1 ? 'Enter your shop name.' : null) : name.trim().length < 2 ? 'Shop name is too short.' : null,
+    mobile: !mobile.trim() ? (tried1 ? 'Enter your mobile number.' : null) : !mobileOk(mobile) ? 'Enter a 10 digit mobile number.' : null,
+    whatsapp: !sameWhatsapp && whatsapp.trim() && !mobileOk(whatsapp) ? 'Enter a 10 digit WhatsApp number.' : null,
+    gst: gstClean && !/^[0-9A-Z]{15}$/.test(gstClean) ? `A GST number has 15 letters and numbers (this has ${gstClean.length}).` : null,
+    username: !username ? (tried2 ? 'Choose a username.' : null)
+      : /\s/.test(username) ? 'No spaces allowed. Use a dot or underscore instead, like maa.tarini'
+      : u.length < 3 ? 'At least 3 letters.'
+      : !usernameOk(u) ? 'Only small letters, numbers, dot, dash or underscore.'
+      : available && !available.ok ? `Not available: ${available.reason}. Try another.` : null,
+    password: !password ? (tried2 ? `Choose a password of at least ${MIN_PASSWORD} characters.` : null)
+      : password.length < MIN_PASSWORD ? `Use at least ${MIN_PASSWORD} characters (${password.length} so far).` : null,
+    confirm: !confirm ? (tried2 && password ? 'Type the password again.' : null)
+      : confirm !== password ? 'The two passwords do not match.' : null,
+  };
+  const step1Ok = name.trim().length >= 2 && mobileOk(mobile) && !problem.whatsapp && !problem.gst;
+  const step2Ok = usernameOk(u) && available?.ok !== false && password.length >= MIN_PASSWORD && password === confirm;
+  const box = (p: string | null, extra = '') => cx(fieldClass, extra, p && invalidClass);
+  const Hint = ({ p }: { p: string | null }) =>
+    p ? <p className="mt-1.5 flex items-start gap-1 text-sm font-semibold text-red-600"><span aria-hidden>⚠</span>{p}</p> : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
     if (step === 1) {
+      setTried1(true);
       if (step1Ok) setStep(2);
       return;
     }
+    setTried2(true);
     if (step2Ok) create.mutate();
   };
 
@@ -123,13 +150,14 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
 
       {err && <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}
 
-      <form onSubmit={submit} className="space-y-4 rounded-2xl bg-white p-5 shadow-sm">
+      <form onSubmit={submit} noValidate className="space-y-4 rounded-2xl bg-white p-5 shadow-sm">
         {step === 1 ? (
           <>
             <div>
               <label className={labelClass} htmlFor="shop">Shop name *</label>
-              <input id="shop" className={fieldClass} value={name} autoFocus placeholder="Maa Tarini Store"
-                     onChange={(e) => setName(e.target.value)} />
+              <input id="shop" className={box(problem.name)} value={name} autoFocus placeholder="Maa Tarini Store"
+                     onChange={(e) => setName(e.target.value)} aria-invalid={!!problem.name} />
+              <Hint p={problem.name} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -153,11 +181,9 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
 
             <div>
               <label className={labelClass} htmlFor="mobile">Mobile number *</label>
-              <input id="mobile" className={fieldClass} value={mobile} inputMode="tel" autoComplete="tel"
-                     placeholder="9876543210" onChange={(e) => setMobile(e.target.value)} />
-              {mobile && !mobileOk(mobile) && (
-                <p className="mt-1 text-xs text-red-600">Enter a 10 digit mobile number.</p>
-              )}
+              <input id="mobile" className={box(problem.mobile)} value={mobile} inputMode="tel" autoComplete="tel"
+                     placeholder="9876543210" onChange={(e) => setMobile(e.target.value)} aria-invalid={!!problem.mobile} />
+              <Hint p={problem.mobile} />
               <p className="mt-1 text-xs text-slate-500">You can sign in with this number too.</p>
             </div>
 
@@ -168,15 +194,19 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
                 WhatsApp number is the same
               </label>
               {!sameWhatsapp && (
-                <input className={cx(fieldClass, 'mt-2')} value={whatsapp} inputMode="tel"
-                       placeholder="WhatsApp number" onChange={(e) => setWhatsapp(e.target.value)} />
+                <>
+                  <input className={box(problem.whatsapp, 'mt-2')} value={whatsapp} inputMode="tel"
+                         placeholder="WhatsApp number" onChange={(e) => setWhatsapp(e.target.value)} />
+                  <Hint p={problem.whatsapp} />
+                </>
               )}
             </div>
 
             <div>
               <label className={labelClass} htmlFor="gst">GST number <span className="font-normal text-slate-400">(optional)</span></label>
-              <input id="gst" className={cx(fieldClass, 'uppercase')} value={gst} autoCapitalize="characters"
+              <input id="gst" className={box(problem.gst, 'uppercase')} value={gst} autoCapitalize="characters"
                      placeholder="21ABCDE1234F1Z5" onChange={(e) => setGst(e.target.value)} />
+              <Hint p={problem.gst} />
             </div>
 
             <div>
@@ -195,29 +225,31 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
 
             <div>
               <label className={labelClass} htmlFor="username">Username *</label>
-              <input id="username" className={fieldClass} value={username} autoFocus autoCapitalize="none"
-                     autoCorrect="off" autoComplete="username" placeholder="maa.tarini"
+              <input id="username" className={cx(box(problem.username), !problem.username && available?.ok && '!border-2 !border-emerald-500 !bg-emerald-50')}
+                     value={username} autoFocus autoCapitalize="none" autoCorrect="off" autoComplete="username"
+                     placeholder="maa.tarini" aria-invalid={!!problem.username}
                      onChange={(e) => setUsername(e.target.value.toLowerCase())} />
-              {username && !usernameOk(username.trim().toLowerCase()) ? (
-                <p className="mt-1 text-xs text-slate-500">
-                  3 to 32 characters: small letters, digits, dot, dash or underscore.
-                </p>
-              ) : available ? (
-                <p className={cx('mt-1 text-xs font-medium', available.ok ? 'text-emerald-700' : 'text-red-600')}>
-                  {available.ok ? `"${username.trim().toLowerCase()}" is free` : `Not available: ${available.reason}`}
-                </p>
-              ) : null}
+              {problem.username ? (
+                <Hint p={problem.username} />
+              ) : available?.ok ? (
+                <p className="mt-1.5 text-sm font-semibold text-emerald-700">✓ “{u}” is free — it is yours.</p>
+              ) : (
+                <p className="mt-1.5 text-xs text-slate-500">Small letters and numbers. No spaces.</p>
+              )}
             </div>
 
-            <PasswordField id="new-password" label="Password *" value={password} onChange={setPassword}
-                           autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD} characters`} />
-            {password && password.length < MIN_PASSWORD && (
-              <p className="text-xs text-red-600">Use at least {MIN_PASSWORD} characters.</p>
-            )}
+            <div>
+              <PasswordField id="new-password" label="Password *" value={password} onChange={setPassword}
+                             autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD} characters`}
+                             invalid={!!problem.password} />
+              <Hint p={problem.password} />
+            </div>
 
-            <PasswordField id="confirm-password" label="Confirm password *" value={confirm} onChange={setConfirm}
-                           autoComplete="new-password" />
-            {confirm && confirm !== password && <p className="text-xs text-red-600">The two passwords do not match.</p>}
+            <div>
+              <PasswordField id="confirm-password" label="Confirm password *" value={confirm} onChange={setConfirm}
+                             autoComplete="new-password" invalid={!!problem.confirm} />
+              <Hint p={problem.confirm} />
+            </div>
 
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
               Write this down somewhere safe. Nobody can read your password back to you, not even us: only a
@@ -235,7 +267,7 @@ export default function Register({ onDone, onSignIn }: { onDone: (me: MeOut) => 
           )}
           <button
             type="submit"
-            disabled={step === 1 ? !step1Ok : !step2Ok || create.isPending}
+            disabled={create.isPending}
             className="min-h-[54px] flex-[2] rounded-xl bg-primary text-base font-bold text-white shadow-sm active:bg-primary-dark disabled:bg-slate-300"
           >
             {step === 1 ? 'Next' : create.isPending ? 'Creating…' : 'Create account'}

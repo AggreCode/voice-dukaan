@@ -233,3 +233,75 @@ async def test_an_admin_sees_every_shop_but_cannot_change_any_of_them():
         assert [p["name"] for p in (await shop_a.get("/api/products")).json()] == ["Chini"]
         assert (await boss.get("/api/shops/me")).json()["name"] == f"t-{b_handle}"
         assert select is not None
+
+
+async def test_buying_sets_both_prices_and_selling_uses_them():
+    """The buy screen asks for the wholesaler's rate and the shop's own selling price on the same line,
+    so the margin is decided the moment the cost is known. Both must land on the product."""
+    if not await _db_ready():
+        pytest.skip("postgres not reachable on localhost:5433")
+    handle = uuid.uuid4().hex[:8]
+    async with _client() as c:
+        await c.post("/api/auth/register", json=_registration(handle))
+        r = await c.post("/api/products", json={"name": "Tiger Biscuit", "unit": "packet",
+                                                "sell_price": 10, "cost_price": 7})
+        assert r.status_code == 201, r.text
+
+        bill = {"voice_session_id": None, "type": "purchase", "payment_mode": "cash", "customer_name": None,
+                "notes": None, "deleted_item_indexes": [], "llm_intent": None,
+                "items": [{"item_index": None, "product_code": "p001", "qty": 24, "unit": "packet",
+                           "unit_price": 8, "sell_price": 12, "spoken_span": None, "llm_product_code": None,
+                           "llm_confidence": None}]}
+        r = await c.post("/api/transactions", json=bill)
+        assert r.status_code == 201, r.text
+        assert float(r.json()["total_amount"]) == 24 * 8, "a purchase is totalled at cost"
+
+        p = (await c.get("/api/products")).json()[0]
+        assert float(p["cost_price"]) == 8, "the last purchase sets the cost"
+        assert float(p["sell_price"]) == 12, "and the shop's new selling price with it"
+        assert float(p["stock_qty"]) == 24
+
+        # selling then bills at the new price
+        sale = bill | {"type": "sale", "items": [bill["items"][0] | {"qty": 2, "unit_price": 12,
+                                                                     "sell_price": None}]}
+        r = await c.post("/api/transactions", json=sale)
+        assert float(r.json()["total_amount"]) == 24.0
+        assert float((await c.get("/api/products")).json()[0]["stock_qty"]) == 22
+
+
+async def test_analytics_ranks_what_sold_what_moves_and_what_earns():
+    if not await _db_ready():
+        pytest.skip("postgres not reachable on localhost:5433")
+    handle = uuid.uuid4().hex[:8]
+    async with _client() as c:
+        await c.post("/api/auth/register", json=_registration(handle))
+        for name, unit, sell, cost in (("Rice", "kg", 60, 50), ("Tiger Biscuit", "packet", 10, 6),
+                                       ("Soap", "piece", 40, None)):
+            body = {"name": name, "unit": unit, "sell_price": sell, "opening_stock": 100}
+            if cost is not None:
+                body["cost_price"] = cost
+            assert (await c.post("/api/products", json=body)).status_code == 201
+
+        def sale(code, qty, price):
+            return {"voice_session_id": None, "type": "sale", "payment_mode": "cash", "customer_name": None,
+                    "notes": None, "deleted_item_indexes": [], "llm_intent": None,
+                    "items": [{"item_index": None, "product_code": code, "qty": qty, "unit": "x",
+                               "unit_price": price, "spoken_span": None, "llm_product_code": None,
+                               "llm_confidence": None}]}
+
+        await c.post("/api/transactions", json=sale("p001", 10, 60))   # rice: one big sale, ₹600
+        for _ in range(3):
+            await c.post("/api/transactions", json=sale("p002", 2, 10))  # biscuit: three small ones
+        await c.post("/api/transactions", json=sale("p003", 1, 40))    # soap: no cost price
+
+        a = (await c.get("/api/analytics", params={"days": 7})).json()
+        assert a["totals"]["sales"] == 600 + 3 * 20 + 40
+        assert a["totals"]["bills"] == 5
+        assert a["top_revenue"][0]["name"] == "Rice"
+        assert a["top_frequency"][0]["name"] == "Tiger Biscuit", "most bills, not most money"
+        assert a["top_margin"][0]["name"] == "Tiger Biscuit", "67% beats rice's 20%"
+        # profit only where the cost is known: rice 10 x 10 + biscuit 6 x 4, soap excluded
+        assert a["totals"]["profit"] == 100 + 24
+        assert 0 < a["totals"]["profit_coverage"] < 1
+        assert len(a["daily"]) == 7 and a["daily"][-1]["sales"] == 700
+        assert a["stock_value"]["missing_prices"] == 1
