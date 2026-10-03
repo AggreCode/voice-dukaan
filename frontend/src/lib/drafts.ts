@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { auth } from './auth';
-import { ReviewItem } from './reviewModel';
+import { PickedProduct, ReviewItem } from './reviewModel';
 import { PaymentMode, VoiceMode } from './types';
 
 /**
@@ -32,6 +32,8 @@ export interface DraftState {
   deleted: number[];
   payment: PaymentMode;
   customer: string;
+  /** Products that came with lines spoken in later, so their "which one?" choices survive a return. */
+  extraProducts?: PickedProduct[];
 }
 
 interface Store {

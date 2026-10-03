@@ -1,4 +1,5 @@
 import { ExtractedItem, ProductOut, ReviewProduct, VoiceMode, VoiceSessionOut } from './types';
+import { normalizeUnit, unitFactor } from './units';
 
 /** Common shape for a product chosen in review (from review_products or /api/products). */
 export interface PickedProduct {
@@ -55,7 +56,12 @@ export interface ReviewItem {
   newName?: string;
   qty: number | null;
   unit: string;
-  /** Selling: the price this customer pays. Buying: the wholesaler's rate, i.e. the cost. */
+  /**
+   * The RATE, per the product's own unit: ₹120 per kg, whatever unit this line is in. Selling: what the
+   * customer pays per unit. Buying: the wholesaler's rate, i.e. the cost. A shopkeeper thinks in rates
+   * ("butter is 120 a kilo"), so the box shows one, and the line converts: 500 g at ₹120/kg is ₹60.
+   * For a product not in stock yet, its unit is this line's unit, so the two are the same.
+   */
   unit_price: number | null;
   /** Buying only: what the shop will now sell this product at. Required to save a purchase. */
   sell_price: number | null;
@@ -100,7 +106,12 @@ export function buildReviewItems(session: VoiceSessionOut, kind: PriceKind = 'se
   const takePrice = usesCapturedPrice(session, kind);
   return items.map((it, idx) => {
     const product = it.product_id ? byCode.get(it.product_id) ?? null : null;
-    const captured = takePrice && it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
+    // "gm", "grams", "ଗ୍ରାମ" all become "g"; nothing said means the product's own unit.
+    const unit = normalizeUnit(it.unit) || product?.unit || '';
+    const f = product ? unitFactor(unit, product.unit) : 1;
+    // A spoken price is per the unit spoken; the box holds the rate per the product's unit.
+    const spoken = takePrice && it.unit_price !== null && it.unit_price > 0 ? it.unit_price : null;
+    const captured = spoken !== null && f ? Math.round((spoken / f) * 100) / 100 : spoken;
     return {
       key: nextKey(),
       item_index: idx,
@@ -108,7 +119,7 @@ export function buildReviewItems(session: VoiceSessionOut, kind: PriceKind = 'se
       newName: product ? undefined : (it.product_name_guess || '').trim() || undefined,
       qty: it.quantity !== null && it.quantity > 0 ? it.quantity : null,
       // What was said, else the product's own unit, else nothing. Never "piece" out of thin air.
-      unit: it.unit || product?.unit || '',
+      unit,
       unit_price: captured ?? defaultUnitPrice(product, kind),
       sell_price: kind === 'cost' ? defaultUnitPrice(product, 'sell') : null,
       priceTouched: captured !== null,
@@ -124,8 +135,30 @@ export function newBlankItem(): ReviewItem {
   };
 }
 
+/**
+ * How many of the product's own unit one of this line's unit is: 0.001 for "g" against a product kept
+ * in "kg". null when they measure different things (a "packet" of something kept in grams).
+ */
+export function lineFactor(it: ReviewItem): number | null {
+  if (!it.product) return 1;
+  return unitFactor(it.unit || it.product.unit, it.product.unit);
+}
+
+/** The line's quantity in the product's own unit: 500 g of a kg product is 0.5. */
+export function baseQty(it: ReviewItem): number | null {
+  const f = lineFactor(it);
+  return f === null ? null : (Number(it.qty) || 0) * f;
+}
+
 export function lineTotal(it: ReviewItem): number {
-  return round2((Number(it.qty) || 0) * (Number(it.unit_price) || 0));
+  const q = baseQty(it);
+  return q === null ? 0 : round2(q * (Number(it.unit_price) || 0));
+}
+
+/** The price per unit OF THIS LINE, which is what the server multiplies the quantity by. */
+export function linePrice(it: ReviewItem): number {
+  const f = lineFactor(it) ?? 1;
+  return Math.round((Number(it.unit_price) || 0) * f * 1e6) / 1e6;
 }
 
 /** The name a not-yet-known line would be created under, or "" when there is nothing to go on. */
@@ -133,7 +166,7 @@ export function newItemName(it: ReviewItem): string {
   return (it.newName ?? it.original?.product_name_guess ?? '').trim();
 }
 
-export type Missing = 'product' | 'qty' | 'unit' | 'price' | 'sell';
+export type Missing = 'product' | 'qty' | 'unit' | 'unitMismatch' | 'price' | 'sell';
 
 /**
  * What still has to be filled in before this line can be saved. Each name maps to one box on the row,
@@ -145,6 +178,7 @@ export function missingFields(it: ReviewItem, intent: Intent): Missing[] {
   if (!it.product && !(intent === 'purchase' && named)) out.push('product');
   if (!(Number(it.qty) > 0)) out.push('qty');
   if (!it.product && intent === 'purchase' && !it.unit.trim()) out.push('unit');
+  if (it.product && lineFactor(it) === null) out.push('unitMismatch');
   if (!(Number(it.unit_price) > 0)) out.push('price');
   if (intent === 'purchase' && !(Number(it.sell_price) > 0)) out.push('sell');
   return out;

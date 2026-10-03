@@ -26,6 +26,7 @@ from app.models import (
 from app.schemas.api import SaveBillIn
 from app.services import catalog as catalog_svc
 from app.services.spoken import clean_learned_alias
+from app.services.units import normalize_unit, unit_factor
 
 
 async def apply_stock_movement(session: AsyncSession, product: Product, delta: Decimal, *, reason: str,
@@ -72,6 +73,14 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
 
     for item in body.items:
         product = products[item.product_code]
+        # The line is in the unit that was said ("500 g"); the stock is in the product's own unit ("kg").
+        # Convert, or refuse: a packet of something stocked in grams has no honest number of grams.
+        line_unit = normalize_unit(item.unit) or normalize_unit(product.unit)
+        factor = unit_factor(line_unit, product.unit)
+        if factor is None:
+            raise ValueError(f"{product.name} is counted in {product.unit}, so it cannot be billed in "
+                             f"{item.unit}. Change the unit to {product.unit}, or change the item's unit in Stock.")
+        qty_base = (item.qty * factor).quantize(Decimal("0.001"))
         line_total = (item.qty * item.unit_price).quantize(Decimal("0.01"))
         total += line_total
         llm = None
@@ -88,13 +97,13 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
             # transcript full of errors.
             was_corrected = (llm.get("product_id") != item.product_code or _qty_changed(llm, item)
                              or _unit_changed(llm, item))
-        ti = TransactionItem(transaction_id=txn.id, product_id=product.id, qty=item.qty, unit=item.unit,
-                             qty_base=item.qty, unit_price=item.unit_price, line_total=line_total,
+        ti = TransactionItem(transaction_id=txn.id, product_id=product.id, qty=item.qty, unit=line_unit,
+                             qty_base=qty_base, unit_price=item.unit_price, line_total=line_total,
                              spoken_span=item.spoken_span, llm_confidence=item.llm_confidence,
                              was_corrected=was_corrected)
         session.add(ti)
         await session.flush()
-        await apply_stock_movement(session, product, sign * item.qty, reason=body.type,
+        await apply_stock_movement(session, product, sign * qty_base, reason=body.type,
                                    ref_type="transaction_item", ref_id=ti.id)
         if body.type == "sale":
             product.sold_count = (product.sold_count or 0) + 1
@@ -102,7 +111,8 @@ async def save_reviewed_bill(session: AsyncSession, shop_id: uuid.UUID, body: Sa
             # Buying sets this product's prices: what was just paid, and what it will now sell for.
             # The last purchase wins for cost, because that is what the next one will cost too.
             if item.unit_price > 0:
-                product.cost_price = item.unit_price
+                # unit_price is per unit SAID; the product's cost is per its own unit.
+                product.cost_price = (item.unit_price / factor).quantize(Decimal("0.01"))
             if item.sell_price is not None and item.sell_price > 0 and item.sell_price != product.sell_price:
                 product.sell_price = item.sell_price
                 catalog_changed = True  # the selling price is part of what the model is shown
@@ -193,7 +203,7 @@ def _qty_changed(llm: dict, item) -> bool:
 
 
 def _unit_changed(llm: dict, item) -> bool:
-    return bool(llm.get("unit")) and llm.get("unit") != item.unit
+    return bool(llm.get("unit")) and normalize_unit(llm.get("unit")) != normalize_unit(item.unit)
 
 
 def _final_dict(item) -> dict:

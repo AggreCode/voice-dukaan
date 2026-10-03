@@ -285,7 +285,7 @@ async def test_analytics_ranks_what_sold_what_moves_and_what_earns():
         def sale(code, qty, price):
             return {"voice_session_id": None, "type": "sale", "payment_mode": "cash", "customer_name": None,
                     "notes": None, "deleted_item_indexes": [], "llm_intent": None,
-                    "items": [{"item_index": None, "product_code": code, "qty": qty, "unit": "x",
+                    "items": [{"item_index": None, "product_code": code, "qty": qty, "unit": "",
                                "unit_price": price, "spoken_span": None, "llm_product_code": None,
                                "llm_confidence": None}]}
 
@@ -305,3 +305,34 @@ async def test_analytics_ranks_what_sold_what_moves_and_what_earns():
         assert 0 < a["totals"]["profit_coverage"] < 1
         assert len(a["daily"]) == 7 and a["daily"][-1]["sales"] == 700
         assert a["stock_value"]["missing_prices"] == 1
+
+
+async def test_500_grams_of_a_kilo_product_is_half_a_kilo_not_500_kilos():
+    """The bug that billed 500 g of Amul at ₹120/kg as ₹60,000 and took 500 kg off the shelf."""
+    if not await _db_ready():
+        pytest.skip("postgres not reachable on localhost:5433")
+    handle = uuid.uuid4().hex[:8]
+    async with _client() as c:
+        await c.post("/api/auth/register", json=_registration(handle))
+        await c.post("/api/products", json={"name": "Amul Butter", "unit": "Kg", "sell_price": 120,
+                                            "cost_price": 100, "opening_stock": 25})
+        line = {"item_index": None, "product_code": "p001", "qty": 500, "unit": "gm",
+                "unit_price": 0.12, "spoken_span": None, "llm_product_code": None, "llm_confidence": None}
+        bill = {"voice_session_id": None, "type": "sale", "payment_mode": "cash", "customer_name": None,
+                "notes": None, "deleted_item_indexes": [], "llm_intent": None, "items": [line]}
+        r = await c.post("/api/transactions", json=bill)
+        assert r.status_code == 201, r.text
+        assert float(r.json()["total_amount"]) == 60.0
+        assert r.json()["items"][0]["unit"] == "g", "stored in one spelling"
+        assert float((await c.get("/api/products")).json()[0]["stock_qty"]) == 24.5
+
+        # buying 2000 g at ₹0.11 a gram sets the cost to ₹110 a KILO, the product's own unit
+        buy = bill | {"type": "purchase", "items": [line | {"qty": 2000, "unit_price": 0.11, "sell_price": 130}]}
+        assert (await c.post("/api/transactions", json=buy)).status_code == 201
+        p = (await c.get("/api/products")).json()[0]
+        assert float(p["cost_price"]) == 110 and float(p["sell_price"]) == 130
+        assert float(p["stock_qty"]) == 26.5
+
+        # a packet of something stocked in kilos has no honest weight: refused, with the reason
+        r = await c.post("/api/transactions", json=bill | {"items": [line | {"unit": "packet", "qty": 1}]})
+        assert r.status_code == 400 and "counted in Kg" in r.json()["detail"]

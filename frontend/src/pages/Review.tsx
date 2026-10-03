@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ItemRow from '../components/ItemRow';
-import { PlusIcon } from '../components/Icons';
+import { MicIcon, PlusIcon } from '../components/Icons';
+import SpeakMore from '../components/SpeakMore';
 import ProductPicker from '../components/ProductPicker';
 import TopBar from '../components/TopBar';
 import TranscriptPanel from '../components/TranscriptPanel';
@@ -12,10 +13,11 @@ import { auth } from '../lib/auth';
 import { DraftSource, clearDraft, loadDraft, saveDraft } from '../lib/drafts';
 import { doneCue } from '../lib/haptics';
 import {
-  Missing, PickedProduct, ReviewItem, buildReviewItems, defaultUnitPrice, intentFor, lineTotal, missingFields,
+  Missing, PickedProduct, ReviewItem, buildReviewItems, defaultUnitPrice, intentFor, linePrice, lineTotal, missingFields,
   newBlankItem, newItemName, priceKindFor, round2, toPicked,
 } from '../lib/reviewModel';
 import { SIDE, THEME } from '../lib/theme';
+import { normalizeUnit } from '../lib/units';
 import { PaymentMode, TransactionIn, VoiceSessionOut, normalizeSession } from '../lib/types';
 import { cacheSession, getCachedSession } from '../lib/uploadQueue';
 import { cx, fmtMoney } from '../lib/utils';
@@ -91,6 +93,7 @@ const MISSING_WORDS: Record<Missing, string> = {
   product: 'item',
   qty: 'quantity',
   unit: 'unit',
+  unitMismatch: 'a unit that fits the item',
   price: 'price',
   sell: 'selling price',
 };
@@ -130,6 +133,8 @@ export function ReviewForm({
     () => restored?.payment ?? (ext?.payment_mode === 'upi' || ext?.payment_mode === 'credit' ? ext.payment_mode : 'cash'),
   );
   const [customer, setCustomer] = useState(() => restored?.customer ?? ext?.customer_name ?? '');
+  const [extraProducts, setExtraProducts] = useState<PickedProduct[]>(() => restored?.extraProducts ?? []);
+  const [speakMore, setSpeakMore] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -163,11 +168,11 @@ export function ReviewForm({
           key: draftKey, route: draftRoute, mode, source, items: items.length, total,
           preview: names.slice(0, 3).join(', ') + (names.length > 3 ? '…' : ''), updatedAt: Date.now(),
         },
-        { items, deleted, payment, customer },
+        { items, deleted, payment, customer, extraProducts },
       );
     }, 300);
     return () => window.clearTimeout(t);
-  }, [items, deleted, payment, customer, total, draftKey, draftRoute, mode, source, manual, editable, session.status]);
+  }, [items, deleted, payment, customer, extraProducts, total, draftKey, draftRoute, mode, source, manual, editable, session.status]);
 
   // ---- what is left to fill ----
   const newKeys = new Set(buying ? items.filter((i) => !i.product && !!newItemName(i)).map((i) => i.key) : []);
@@ -176,7 +181,29 @@ export function ReviewForm({
   const gapKinds = Array.from(new Set(gaps.flat()));
   const newCount = newKeys.size;
 
-  const knownProducts = useMemo<PickedProduct[]>(() => session.review_products.map(toPicked), [session.review_products]);
+  const knownProducts = useMemo<PickedProduct[]>(
+    () => [...session.review_products.map(toPicked), ...extraProducts],
+    [session.review_products, extraProducts],
+  );
+
+  /**
+   * Lines spoken in after the bill was opened. They join below the ones already there, and an untouched
+   * empty line (a typed bill starts with one) makes way for them. They carry no link to the first
+   * recording, so they are saved as added lines, which is what they are.
+   */
+  const addSpoken = (s: VoiceSessionOut) => {
+    const fresh = buildReviewItems(s, kind).map((i) => ({ ...i, item_index: null }));
+    const blank = (i: ReviewItem) => !i.product && !newItemName(i) && i.qty === null && i.unit_price === null && !i.original;
+    setItems((prev) => [...prev.filter((i) => !blank(i)), ...fresh]);
+    setExtraProducts((prev) => {
+      const byCode = new Map(prev.map((x) => [x.code, x]));
+      s.review_products.forEach((rp) => byCode.set(rp.code, toPicked(rp)));
+      return [...byCode.values()];
+    });
+    setSpeakMore(false);
+    toast.success(`Added ${fresh.length} item${fresh.length === 1 ? '' : 's'}`);
+    window.setTimeout(() => document.getElementById(`row-${fresh[0]?.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+  };
   const activeItem = items.find((i) => i.key === activeKey) ?? null;
   const pickerItem = items.find((i) => i.key === pickerFor) ?? null;
 
@@ -261,7 +288,7 @@ export function ReviewForm({
         created = toPicked(
           await api.products.create({
             name,
-            unit: row.unit.trim() || 'piece',
+            unit: normalizeUnit(row.unit) || 'piece',
             cost_price: Number(row.unit_price) || null,
             sell_price: Number(row.sell_price) || 0,
             opening_stock: 0,
@@ -294,8 +321,10 @@ export function ReviewForm({
           item_index: i.item_index,
           product_code: i.product!.code,
           qty: Number(i.qty),
-          unit: i.unit.trim() || i.product!.unit,
-          unit_price: Number(i.unit_price),
+          // the server converts "500 g" against a product kept in kg; send what was said, and the
+          // price per THAT unit, which is the rate scaled by the conversion
+          unit: normalizeUnit(i.unit) || i.product!.unit,
+          unit_price: linePrice(i),
           sell_price: buying ? Number(i.sell_price) : null,
           spoken_span: i.original?.spoken_span ?? null,
           llm_product_code: i.original?.product_id ?? null,
@@ -454,16 +483,26 @@ export function ReviewForm({
             ))}
           </ul>
 
-          <button
-            type="button"
-            onClick={addItem}
-            className={cx(
-              'mt-3 flex min-h-[64px] w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed text-lg font-bold',
-              theme.softBorder, theme.text,
-            )}
-          >
-            <PlusIcon className="h-6 w-6" /> Add an item
-          </button>
+          {/* More items, the same two ways as the first ones: speaking or typing. */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setSpeakMore(true)}
+              className={cx('flex min-h-[64px] items-center justify-center gap-2 rounded-2xl text-lg font-bold shadow-sm', theme.solid, theme.solidActive)}
+            >
+              <MicIcon className="h-6 w-6" /> Speak more
+            </button>
+            <button
+              type="button"
+              onClick={addItem}
+              className={cx(
+                'flex min-h-[64px] items-center justify-center gap-2 rounded-2xl border-2 border-dashed text-lg font-bold',
+                theme.softBorder, theme.text,
+              )}
+            >
+              <PlusIcon className="h-6 w-6" /> Type an item
+            </button>
+          </div>
 
           <button type="button" onClick={discard} className="mt-4 min-h-[48px] w-full text-sm font-semibold text-red-600">
             Delete this bill
@@ -540,6 +579,8 @@ export function ReviewForm({
           </div>
         </div>
       )}
+
+      {speakMore && <SpeakMore mode={mode} onItems={addSpoken} onClose={() => setSpeakMore(false)} />}
 
       <ProductPicker
         open={!!pickerItem}

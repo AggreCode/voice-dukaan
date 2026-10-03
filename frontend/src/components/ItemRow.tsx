@@ -1,9 +1,11 @@
 import { COMMON_UNITS, extractionReasonLabel } from '../lib/constants';
 import {
-  Intent, Missing, PickedProduct, ReviewItem, defaultUnitPrice, lineTotal, missingFields, newItemName, rowMargin,
+  Intent, Missing, PickedProduct, ReviewItem, baseQty, defaultUnitPrice, lineFactor, lineTotal, missingFields, newItemName,
+  rowMargin,
 } from '../lib/reviewModel';
 import { formatStock } from '../lib/stock';
 import { cx, fmtMoney } from '../lib/utils';
+import { normalizeUnit, trimQty } from '../lib/units';
 import { CheckIcon, TrashIcon } from './Icons';
 
 interface Props {
@@ -59,18 +61,24 @@ export default function ItemRow({
       .join(','),
   );
   const margin = buying ? rowMargin(item) : null;
+  // Prices are per the product's own unit; say which, so "120" reads as "120 a kilo".
+  const per = normalizeUnit(item.product?.unit || item.unit) || 'unit';
+  const factor = lineFactor(item);
+  const converted = item.product && factor !== null && factor !== 1 && Number(item.qty) > 0;
+  const mismatch = missing.has('unitMismatch');
 
   const box = (field: Missing) =>
     cx(
       'mt-1 min-h-[52px] w-full rounded-xl border-2 px-3 text-lg font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-4',
-      missing.has(field)
-        ? showErrors
+      missing.has(field) || (field === 'unit' && mismatch)
+        ? showErrors || (field === 'unit' && mismatch)
           ? 'border-red-500 bg-red-50 placeholder:text-red-400 focus:ring-red-200'
           : 'border-dashed border-amber-400 bg-amber-50/70 placeholder:text-amber-600/70 focus:ring-amber-200'
         : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-slate-200',
     );
   const label = (field: Missing) =>
-    cx('block text-xs font-bold uppercase tracking-wide', missing.has(field) && showErrors ? 'text-red-600' : 'text-slate-500');
+    cx('block text-xs font-bold uppercase tracking-wide',
+      (missing.has(field) && showErrors) || (field === 'unit' && mismatch) ? 'text-red-600' : 'text-slate-500');
 
   const num = (v: string): number | null => (v.trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
@@ -254,6 +262,11 @@ export default function ItemRow({
             placeholder={item.product?.unit || 'kg, packet…'}
             value={item.unit}
             onChange={(e) => onChange({ ...item, unit: e.target.value })}
+            onBlur={() => {
+              // "gm", "grams", "ଗ୍ରାମ" all settle to "g", so the shop's records use one word for one unit
+              const n = normalizeUnit(item.unit);
+              if (n && n !== item.unit) onChange({ ...item, unit: n });
+            }}
           />
           <datalist id={`units-${item.key}`}>
             {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
@@ -261,10 +274,28 @@ export default function ItemRow({
         </label>
       </div>
 
+      {mismatch && item.product && (
+        <div className="mt-2 flex items-center gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-3 py-2">
+          <p className="min-w-0 flex-1 text-sm font-semibold text-red-700">
+            {item.product.name} is counted in {item.product.unit}, not {item.unit}.
+          </p>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange({ ...item, unit: item.product!.unit });
+            }}
+            className="min-h-[44px] shrink-0 rounded-xl bg-red-600 px-3 text-sm font-bold text-white"
+          >
+            Use {item.product.unit}
+          </button>
+        </div>
+      )}
+
       {/* ---- at what price ---- */}
       <div className="mt-2 grid grid-cols-2 gap-2">
         <label onClick={(e) => e.stopPropagation()} className={buying ? '' : 'col-span-2'}>
-          <span className={label('price')}>{buying ? 'Cost price ₹' : 'Price ₹'}</span>
+          <span className={label('price')}>{buying ? `Cost ₹ per ${per}` : `Price ₹ per ${per}`}</span>
           <input
             className={box('price')}
             type="number"
@@ -278,7 +309,7 @@ export default function ItemRow({
         </label>
         {buying && (
           <label onClick={(e) => e.stopPropagation()}>
-            <span className={label('sell')}>Selling price ₹</span>
+            <span className={label('sell')}>Sell ₹ per {per}</span>
             <input
               className={box('sell')}
               type="number"
@@ -296,6 +327,12 @@ export default function ItemRow({
       {/* ---- the evidence, and what this line adds up to ---- */}
       <div className="mt-2 flex items-end justify-between gap-2">
         <div className="min-w-0 flex-1 text-xs">
+          {converted && (
+            <p className="font-bold text-slate-700">
+              {trimQty(Number(item.qty))} {normalizeUnit(item.unit)} = {trimQty(baseQty(item) ?? 0)} {item.product!.unit}
+              {Number(item.unit_price) > 0 && ` × ${fmtMoney(Number(item.unit_price))}`}
+            </p>
+          )}
           {margin && (
             <p className={cx('font-bold', margin.amount >= 0 ? 'text-emerald-700' : 'text-red-600')}>
               {margin.amount >= 0 ? 'You earn' : 'Loss of'} {fmtMoney(Math.abs(margin.amount))} each · {margin.pct.toFixed(0)}%
