@@ -1,0 +1,7 @@
+{
+  "name": "mo-dokan-demo-video",
+  "private": true,
+  "type": "module",
+  "description": "Renders the Odia teaching video by driving the real app. See README.md.",
+  "dependencies": { "playwright": "1.48.2" }
+}

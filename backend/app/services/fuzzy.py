@@ -95,8 +95,17 @@ def _ratio(a: str, b: str) -> float:
 def score_term(query: str, term: str) -> float:
     """0..1 for how well a written fragment fits one catalog term.
 
-    A prefix scores highest, because that is what an abbreviation is: the start of the word, kept.
-    The shorter the fragment the lower the ceiling, since "pa" fits far too many products to trust.
+    Three kinds of evidence, each trusted only where it means something:
+
+    * an abbreviation -- the start of the word, kept ("para", "bisc"). The shorter the fragment the
+      lower the ceiling, since "pa" fits far too many products to trust;
+    * whole words in common -- "Rice" inside "Rice (Premium) 25 kg bag";
+    * letters in common -- a spelling slip ("musturd", "biscut", "maggie"). Only for strings long enough
+      for the overlap to mean something: between short words it is noise, "atta" and "tea" share most
+      of their letters and nothing else.
+
+    Measured on 15 products a shop might newly stock against a kirana catalog, and 12 real ways of
+    writing products it already has; see test_fuzzy.py.
     """
     q, t = fold(query), fold(term)
     if not q or not t:
@@ -106,31 +115,56 @@ def score_term(query: str, term: str) -> float:
     best = 0.0
     if t.startswith(q):
         best = 0.94 if len(q) >= 4 else 0.86 if len(q) == 3 else 0.55
-    elif q.startswith(t):
-        best = 0.9 if len(t) >= 4 else 0.8 if len(t) == 3 else 0.5
+    elif q.startswith(t) and len(t) >= 3:
+        best = 0.9 if len(t) >= 4 else 0.8
     if len(q) >= 4 and q in t:
         best = max(best, 0.82)
+
     # Every word of the product's name appears in the line: "Rice" inside "Rice (Premium) 25 kg bag".
-    # This is what separates a real partial match from a coincidence of letters, which the character
-    # ratios below are far too generous about ("Toor Dal" scored 0.50 against "Tomato Sauce").
     term_words, query_words = set(fold_words(term)), set(fold_words(query))
     if term_words and term_words <= query_words:
         best = max(best, 0.9)
     elif query_words and query_words <= term_words and len("".join(query_words)) >= 4:
         best = max(best, 0.86)
-    best = max(best, _ratio(q, t))
-    if len(q) >= 3:
-        best = max(best, _ratio(skeleton(query), skeleton(term)) * 0.95)
-    return min(1.0, best)
+
+    # Letters in common. Short strings get their similarity discounted, because two four-letter words
+    # agree on half their letters by chance.
+    similar = _ratio(q, t)
+    shortest = min(len(q), len(t))
+    if shortest < 5:
+        similar *= 0.6  # "atta" and "tata" share three letters of four, and nothing else
+    elif shortest < 6:
+        similar *= 0.75
+    best = max(best, similar)
+    # Consonants only, for ONE transliterated word against ONE word: Odia written in Latin letters gets
+    # its vowels wrong ("parasitamal") far more than its consonants. Across several words, or with
+    # three consonants or fewer, it matches almost anything ("atta" and "tea" are both just "t").
+    if len(query_words) == 1 and len(term_words) == 1:
+        sq, st = skeleton(query), skeleton(term)
+        if min(len(sq), len(st)) >= 4:
+            best = max(best, _ratio(sq, st) * 0.9)
+
+    # Two names that share a word but each carry a word of their own are two products: Moong Dal is not
+    # Toor Dal, Good Day Biscuit is not Tiger Biscuit. The shared word is what makes the letters look
+    # alike, so judge them on the words that differ, in written order so "marigold" meets "marie gold".
+    own_q = [w for w in fold_words(query) if w not in term_words]
+    own_t = [w for w in fold_words(term) if w not in query_words]
+    cap = 1.0
+    if query_words & term_words and own_q and own_t:
+        cap = 0.1 + 0.7 * _ratio("".join(own_q), "".join(own_t))
+    return min(1.0, best, cap)
 
 
 def rank(query: str, catalog: CatalogSnapshot, *, limit: int = 4) -> list[tuple[str, float]]:
     """Catalog codes best first. Quantity and unit words are stripped: "para 10 patta" asks about
     "para", and leaving the numbers in would make every line look alike."""
     cleaned = strip_quantity_words(query) or query
+    # "parle" may mean "Biscuit Parle G", but "Moong Dal" must not mean "Toor Dal" just because the
+    # second word of each is "dal". A single word of a name only stands for it when the line is one word.
+    one_word = len(fold_words(cleaned)) <= 1
     scored: list[tuple[str, float]] = []
     for code, p in catalog.products.items():
-        terms = [p.name, *(p.name.split() if " " in p.name else []), *p.aliases, *p.learned]
+        terms = [p.name, *(p.name.split() if " " in p.name and one_word else []), *p.aliases, *p.learned]
         if p.local_name:
             terms.append(p.local_name)
         if p.brand and p.brand not in ("-", ""):
@@ -148,7 +182,8 @@ def best_score(text: str, catalog: CatalogSnapshot, code: str) -> float:
     if product is None:
         return 0.0
     cleaned = strip_quantity_words(text) or text
-    terms = [product.name, *(product.name.split() if " " in product.name else []), *product.aliases,
+    one_word = len(fold_words(cleaned)) <= 1
+    terms = [product.name, *(product.name.split() if " " in product.name and one_word else []), *product.aliases,
              *product.learned]
     if product.local_name:
         terms.append(product.local_name)

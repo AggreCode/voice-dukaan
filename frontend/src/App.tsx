@@ -90,6 +90,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-[calc(64px+env(safe-area-inset-bottom))]">
+      <ScrollToTop />
       <Routes location={loc}>
         <Route path="/" element={<Home />} />
         <Route path="/sell" element={<Hub key="sell" mode="sale" />} />
@@ -118,6 +119,21 @@ export default function App() {
       <BottomNav />
     </div>
   );
+}
+
+/**
+ * Every new screen opens at its top.
+ *
+ * A single-page app keeps the scroll position when it changes screen, so saving a long bill landed the
+ * shopkeeper halfway down the next screen, with its "Bill saved!" confirmation scrolled out of sight
+ * above them. Found by filming the app, not by reading it.
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
 }
 
 /** `/record?mode=stock_in` and friends, from before buying and selling had their own addresses. */

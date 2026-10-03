@@ -100,8 +100,10 @@ class Settings(BaseSettings):
     # lines: genuine matches score 0.86-1.0, coincidences of letters 0.35-0.50.
     FUZZY_VERIFY: bool = True
     FUZZY_MIN_MATCH_SCORE: float = 0.6
-    # Weaker floor used only to SUGGEST an existing product when stocking in, never to choose one.
-    FUZZY_SUGGEST_SCORE: float = 0.5
+    # Floor for SUGGESTING an existing product when stocking in ("Already in your stock? — Yes, add to
+    # it"). A shopkeeper may tap Yes on any offer, so a wrong one costs more than a missing one.
+    # Measured: real rewordings score 0.70-1.0, a new product against the nearest shelf-mate 0.33-0.57.
+    FUZZY_SUGGEST_SCORE: float = 0.6
 
     # extraction guards
     REVIEW_CONFIDENCE_FLOOR: float = 0.75

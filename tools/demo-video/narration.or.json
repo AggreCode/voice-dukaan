@@ -1,0 +1,142 @@
+{
+  "_about": "The Odia narration, one line per step. `or` is spoken and shown as the caption; `en` is only for whoever edits this file. Change any `or` line and re-run make_video.sh. Keep each line short: it is one caption on screen.",
+  "voice": "ritu",
+  "pace": 1.0,
+  "steps": [
+    {
+      "id": "intro_hello",
+      "or": "ନମସ୍କାର! ଆସନ୍ତୁ, ‘ମୋ ଦୋକାନ’ ଦେଖିବା।",
+      "en": "Namaskar! Come, let us look at Mo Dokan."
+    },
+    {
+      "id": "intro_why",
+      "or": "ଖାତା ଲେଖିବା, ଷ୍ଟକ ଗଣିବା, ଲାଭ ହିସାବ କରିବା — ସବୁ ଏବେ ଆପଣଙ୍କ ଫୋନରେ।",
+      "en": "Writing the ledger, counting stock, working out profit: all of it now on your phone."
+    },
+    {
+      "id": "register",
+      "or": "ପ୍ରଥମ ଥର, ଦୋକାନର ନାଁ ଆଉ ମୋବାଇଲ ନମ୍ବର ଦେଇ ଖାତା ଖୋଲନ୍ତୁ।",
+      "en": "The first time, open an account with the shop's name and mobile number."
+    },
+    {
+      "id": "register_red",
+      "or": "କିଛି ଭୁଲ ହେଲେ, ସେହି ଘର ଲାଲ ହୋଇଯାଏ, ଆଉ କଣ ଠିକ କରିବେ ଲେଖା ଆସେ।",
+      "en": "If something is wrong, that box turns red and tells you what to fix."
+    },
+    {
+      "id": "login",
+      "or": "ତା’ପରେ ୟୁଜରନେମ ବା ମୋବାଇଲ ନମ୍ବର, ଆଉ ପାସୱାର୍ଡ ଦେଇ ଭିତରକୁ ଆସନ୍ତୁ।",
+      "en": "Then come in with your username or mobile number, and your password."
+    },
+    {
+      "id": "home",
+      "or": "ଖୋଲିଲେ ଦୁଇଟି ବଡ଼ ବଟନ — ସବୁଜ ‘ବିକ୍ରି’, ଆଉ ନୀଳ ‘କିଣା’।",
+      "en": "When it opens, two big buttons: green Sell, and blue Buy."
+    },
+    {
+      "id": "home_today",
+      "or": "ଉପରେ ଦେଖାଯାଏ, ଆଜି କେତେ ଟଙ୍କାର ବିକ୍ରି ହେଲା।",
+      "en": "At the top you see how much you sold today."
+    },
+    {
+      "id": "sell_hub",
+      "or": "ଗ୍ରାହକ ଆସିଲେ ‘ବିକ୍ରି’ ଦବାନ୍ତୁ। ବିଲ ତିନି ଉପାୟରେ ହୁଏ — କହି, ଫଟୋରୁ, କିମ୍ବା ଲେଖି।",
+      "en": "When a customer comes, press Sell. A bill can be made three ways: speaking, a photo, or writing."
+    },
+    {
+      "id": "voice_mic",
+      "or": "ମାଇକ ଦବାନ୍ତୁ। ଫୋନ ଟିକେ କମ୍ପିବ — ଅର୍ଥାତ ଶୁଣୁଛି।",
+      "en": "Press the mic. The phone buzzes a little, which means it is listening."
+    },
+    {
+      "id": "voice_say",
+      "or": "ଯେମିତି ଦୋକାନ ପିଲାକୁ କୁହନ୍ତି, ସେମିତି ଜିନିଷର ନାଁ କୁହନ୍ତୁ।",
+      "en": "Say the items the way you would tell your shop helper."
+    },
+    {
+      "id": "names_only",
+      "or": "କେବଳ ନାଁ କହିଲେ ବି ଚଳିବ — ବାସମତୀ, ମାରି ଗୋଲ୍ଡ, ଟାଇଗର ବିସ୍କୁଟ।",
+      "en": "Just the names are enough: basmati, Marie Gold, Tiger biscuit."
+    },
+    {
+      "id": "fill_yellow",
+      "or": "ଦାମ ଆପଣଙ୍କ ଦୋକାନରୁ ନିଜେ ଆସେ। ହଳଦିଆ ଘରେ କେବଳ ପରିମାଣ ଭରନ୍ତୁ।",
+      "en": "The price comes from your shop by itself. Fill only the quantity in the yellow box."
+    },
+    {
+      "id": "walk_away",
+      "or": "ଅଧା ବିଲ ଛାଡ଼ି ଅନ୍ୟ କାମକୁ ଗଲେ ବି ଚିନ୍ତା ନାହିଁ।",
+      "en": "No worry if you leave a bill half done and go to something else."
+    },
+    {
+      "id": "continue",
+      "or": "ବିଲଟି ‘ସେଭ ହୋଇନାହିଁ’ ତାଲିକାରେ ଅପେକ୍ଷା କରେ। ‘Continue’ ଦବାଇ ଯେଉଁଠି ଛାଡ଼ିଥିଲେ ସେଠୁ କରନ୍ତୁ।",
+      "en": "The bill waits under Not saved yet. Press Continue and carry on where you left off."
+    },
+    {
+      "id": "save_sale",
+      "or": "ସବୁ ଭରିଗଲେ ‘Save’ ଦବାନ୍ତୁ। ବିଲ ସେଭ ହେଲା, ଷ୍ଟକ ନିଜେ କମିଗଲା।",
+      "en": "When it is all filled, press Save. The bill is saved and the stock goes down by itself."
+    },
+    {
+      "id": "buy_hub",
+      "or": "ପାଇକାରୀଠାରୁ ମାଲ ଆସିଲେ, ‘କିଣା’ ଦବାନ୍ତୁ।",
+      "en": "When stock arrives from the wholesaler, press Buy."
+    },
+    {
+      "id": "photo",
+      "or": "ପାଇକାରୀ ବିଲର ଗୋଟିଏ ଫଟୋ ନିଅନ୍ତୁ।",
+      "en": "Take one photo of the wholesaler's bill."
+    },
+    {
+      "id": "photo_read",
+      "or": "ଜିନିଷ, ପରିମାଣ ଆଉ କିଣା ଦର — ସବୁ ଫଟୋରୁ ନିଜେ ପଢ଼ିନିଏ।",
+      "en": "Items, quantity and the buying rate: it reads them all from the photo by itself."
+    },
+    {
+      "id": "sell_price",
+      "or": "ପାଖରେ ବିକ୍ରି ଦାମ ଲେଖନ୍ତୁ। ପ୍ରତି ଜିନିଷରେ କେତେ ଲାଭ, ସଙ୍ଗେ ସଙ୍ଗେ ଦେଖାଯାଏ।",
+      "en": "Write your selling price beside it. The profit on each item shows straight away."
+    },
+    {
+      "id": "which_one",
+      "or": "ଖାଲି ‘ବିସ୍କୁଟ’ ଲେଖାଥିଲେ, କେଉଁ ବିସ୍କୁଟ, ଗୋଟିଏ ଛୁଆଁରେ ବାଛନ୍ତୁ।",
+      "en": "If only 'biscuit' is written, pick which biscuit with one touch."
+    },
+    {
+      "id": "save_buy",
+      "or": "ନୂଆ ଜିନିଷ ନିଜେ ଷ୍ଟକରେ ଯୋଡ଼ି ହୋଇଯାଏ। ‘Save’ ଦବାନ୍ତୁ।",
+      "en": "A new item is added to your stock by itself. Press Save."
+    },
+    {
+      "id": "stock",
+      "or": "‘ମୋ ମାଲ’ରେ ସବୁ ଜିନିଷ — କେତେ ଅଛି, କିଣା ଦାମ, ବିକ୍ରି ଦାମ, ଲାଭ — ଏକାଠି।",
+      "en": "My stock has every item together: how much is left, buying price, selling price, profit."
+    },
+    {
+      "id": "stock_sheet",
+      "or": "ଜିନିଷ ଛୁଇଁଲେ ଦାମ ବଦଳାଇ ପାରିବେ। କମ ଥିବା ମାଲ ହଳଦିଆରେ ଦେଖାଯାଏ।",
+      "en": "Touch an item to change its price. Stock running low shows in yellow."
+    },
+    {
+      "id": "report",
+      "or": "‘ହିସାବ’ରେ ଦେଖନ୍ତୁ — କେଉଁ ଜିନିଷ ବେଶି ଟଙ୍କା ଦିଏ, କେଉଁଟା ବେଶି ବିକେ।",
+      "en": "In Report, see which item brings the most money, and which sells the most."
+    },
+    {
+      "id": "report_margin",
+      "or": "ଆଉ କେଉଁ ଜିନିଷରେ ସବୁଠୁ ବେଶି ଲାଭ — ସବୁ ଗୋଟିଏ ପୃଷ୍ଠାରେ।",
+      "en": "And which item gives the most profit: all on one page."
+    },
+    {
+      "id": "outro_why",
+      "or": "ଖାତା ଲେଖିବାର ଝଞ୍ଝଟ ଶେଷ। ସମୟ ବଞ୍ଚେ, ହିସାବ ଠିକ ରହେ।",
+      "en": "The trouble of writing the ledger is over. You save time, and the accounts stay right."
+    },
+    {
+      "id": "outro_go",
+      "or": "‘ମୋ ଦୋକାନ’ — ଆଜି ହିଁ ଆରମ୍ଭ କରନ୍ତୁ।",
+      "en": "Mo Dokan: start today."
+    }
+  ]
+}

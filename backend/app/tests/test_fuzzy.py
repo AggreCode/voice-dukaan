@@ -180,3 +180,67 @@ def test_audit_then_fill_does_not_put_the_wrong_product_back():
     bill = _bill(_matched("Toor Dal | 5 | kg | 120", "p003"))
     bill = fill_unresolved(verify_matches(bill, MEDICAL), MEDICAL)
     assert bill.items[0].product_id is None
+
+
+# --- two products that share a word are still two products ------------------------------------
+SHARED = _snap(
+    ("p001", "Toor Dal", []),
+    ("p002", "Tiger Biscuit", []),
+    ("p003", "Marie Gold Biscuit", []),
+    ("p004", "Biscuit Parle G", []),
+)
+
+
+def test_a_new_product_is_not_offered_as_a_shelf_mate_that_shares_one_word():
+    """Found by filming the app: buying Moong Dal offered "Already in your stock? Toor Dal — add to it",
+    and Good Day Biscuit was scored 0.9 against Tiger Biscuit. One tap would have put the wrong goods
+    on the wrong shelf. A shared "dal" or "biscuit" is what makes the letters look alike, so it must
+    not be what decides it."""
+    for line in ("Moong Dal", "Moong Dal | 10 | kg | 105", "Good Day Biscuit"):
+        top = rank(line, SHARED)
+        assert not top or top[0][1] < 0.5, (line, top[:1])
+
+
+def test_the_real_matches_survive_that_rule():
+    assert rank("marigold biscuit", SHARED)[0] [0] == "p003"
+    assert rank("marigold biscuit", SHARED)[0][1] >= 0.72, "a spelling difference is still the same product"
+    assert rank("toor dal 2 kg", SHARED)[0] == ("p001", 1.0)
+    assert rank("tiger biscuit 5 packet", SHARED)[0] == ("p002", 1.0)
+    # one word on its own may still name the product it belongs to
+    assert rank("parle", SHARED)[0][0] == "p004"
+    assert rank("tiger", SHARED)[0][0] == "p002"
+
+
+def test_the_audit_rejects_a_match_to_a_shelf_mate():
+    bill = verify_matches(_bill(_matched("Moong Dal | 10 | kg | 105", "p001")), SHARED)
+    assert bill.items[0].product_id is None and "weak_match" in bill.items[0].reason
+
+
+# --- the suggestion threshold, measured -----------------------------------------------------------
+KIRANA_SHELF = _snap(*[(f"p{i:03d}", n, []) for i, n in enumerate([
+    "Basmati Rice", "Marie Gold Biscuit", "Tiger Biscuit", "Good Day Biscuit", "Sugar", "Toor Dal",
+    "Mustard Oil", "Maggi Noodles", "Tata Salt", "Surf Excel", "Red Label Tea", "Parle G", "Paracetamol 500mg",
+], start=1)])
+NEWLY_STOCKED = ["Moong Dal", "Moong Dal | 10 | kg | 105", "Hide and Seek", "Ghee", "Atta", "Poha", "Lux Soap",
+                 "Colgate", "Haldi", "Chana Dal", "Sunflower Oil", "Rock Salt", "Green Tea", "Bourbon Biscuit", "Moong"]
+SAME_PRODUCT = {"marigold biscuit": "Marie Gold Biscuit", "tiger biscut": "Tiger Biscuit", "maggi": "Maggi Noodles",
+                "maggie noodles": "Maggi Noodles", "surf": "Surf Excel", "red label": "Red Label Tea",
+                "parleg": "Parle G", "basmati": "Basmati Rice", "toor dal 2 kg": "Toor Dal",
+                "ପାରାସିଟାମଲ 10": "Paracetamol 500mg",
+                "para": "Paracetamol 500mg", "musturd oil": "Mustard Oil"}
+
+
+def test_nothing_a_shop_newly_stocks_is_offered_as_something_it_already_has():
+    """Every one of these was once offered as a shelf-mate ("Atta" as Red Label Tea at 0.95, "Ghee" as
+    Parle G). An offer reads as advice, and a shopkeeper may well tap Yes."""
+    floor = get_settings().FUZZY_SUGGEST_SCORE
+    offered = {q: rank(q, KIRANA_SHELF)[0] for q in NEWLY_STOCKED if rank(q, KIRANA_SHELF)[0][1] >= floor}
+    assert not offered, offered
+
+
+def test_another_way_of_writing_a_product_on_the_shelf_is_still_offered():
+    floor = get_settings().FUZZY_SUGGEST_SCORE
+    names = {p.code: p.name for p in KIRANA_SHELF.products.values()}
+    for line, want in SAME_PRODUCT.items():
+        code, score = rank(line, KIRANA_SHELF)[0]
+        assert names[code] == want and score >= floor, (line, names[code], score)
