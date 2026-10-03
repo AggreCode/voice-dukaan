@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { COMMON_UNITS, extractionReasonLabel } from '../lib/constants';
 import {
   Intent, Missing, PickedProduct, ReviewItem, baseQty, defaultUnitPrice, lineFactor, lineTotal, missingFields, newItemName,
@@ -66,6 +67,9 @@ export default function ItemRow({
   const factor = lineFactor(item);
   const converted = item.product && factor !== null && factor !== 1 && Number(item.qty) > 0;
   const mismatch = missing.has('unitMismatch');
+  // What is being typed into the Amount box, kept apart from the calculated value so the box does not
+  // rewrite itself under the shopkeeper's finger while they type "2.5".
+  const [amountText, setAmountText] = useState<string | null>(null);
 
   const box = (field: Missing) =>
     cx(
@@ -294,8 +298,8 @@ export default function ItemRow({
 
       {/* ---- at what price ---- */}
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <label onClick={(e) => e.stopPropagation()} className={buying ? '' : 'col-span-2'}>
-          <span className={label('price')}>{buying ? `Cost ₹ per ${per}` : `Price ₹ per ${per}`}</span>
+        <label onClick={(e) => e.stopPropagation()}>
+          <span className={label('price')}>{buying ? `Cost ₹ per ${per}` : `Rate ₹ per ${per}`}</span>
           <input
             className={box('price')}
             type="number"
@@ -307,6 +311,34 @@ export default function ItemRow({
             onChange={(e) => onChange({ ...item, unit_price: num(e.target.value), priceTouched: true })}
           />
         </label>
+        {!buying && (
+          <label onClick={(e) => e.stopPropagation()}>
+            <span className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+              Amount ₹{Number(item.qty) > 0 ? ` for ${trimQty(Number(item.qty))} ${normalizeUnit(item.unit) || per}` : ''}
+            </span>
+            <input
+              className="mt-1 min-h-[52px] w-full rounded-xl border-2 border-emerald-200 bg-emerald-50 px-3 text-lg font-extrabold tabular-nums text-emerald-900 focus:outline-none focus:ring-4 focus:ring-emerald-200"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              placeholder="—"
+              disabled={!(Number(item.qty) > 0) || baseQty(item) === null}
+              value={amountText ?? (lineTotal(item) > 0 ? String(lineTotal(item)) : '')}
+              onFocus={() => setAmountText(lineTotal(item) > 0 ? String(lineTotal(item)) : '')}
+              onBlur={() => setAmountText(null)}
+              onChange={(e) => {
+                // Typing the amount ("make it ₹3") sets the rate that gives it, so the two always agree.
+                setAmountText(e.target.value);
+                const amount = num(e.target.value);
+                const q = baseQty(item);
+                if (amount !== null && q && q > 0) {
+                  onChange({ ...item, unit_price: Math.round((amount / q) * 10000) / 10000, priceTouched: true });
+                }
+              }}
+            />
+          </label>
+        )}
         {buying && (
           <label onClick={(e) => e.stopPropagation()}>
             <span className={label('sell')}>Sell ₹ per {per}</span>
@@ -346,9 +378,12 @@ export default function ItemRow({
           )}
           {reason && <p className="truncate font-semibold text-amber-700">{reason}</p>}
         </div>
-        <p className="shrink-0 text-lg font-extrabold tabular-nums text-slate-900">
-          {lineTotal(item) > 0 ? fmtMoney(lineTotal(item)) : <span className="text-slate-300">₹ —</span>}
-        </p>
+        {/* Selling lines show their amount in its own box above; buying lines total here. */}
+        {buying && (
+          <p className="shrink-0 text-lg font-extrabold tabular-nums text-slate-900">
+            {lineTotal(item) > 0 ? fmtMoney(lineTotal(item)) : <span className="text-slate-300">₹ —</span>}
+          </p>
+        )}
       </div>
     </li>
   );
